@@ -105,10 +105,11 @@ class Command(BaseCommand):
         path = opts["file"]
         city_slug = norm(opts["city"]).lower()
         source = norm(opts["source"])
-
-        city = City.objects.filter(slug=city_slug).first()
-        if not city:
-            raise Exception(f"City met slug '{city_slug}' niet gevonden. Maak die eerst aan in de admin/shell.")
+        name_map = {"apeldoorn": "Apeldoorn", "deventer": "Deventer"}
+        city, _ = City.objects.get_or_create(
+            slug=city_slug,
+            defaults={"name": name_map.get(city_slug, city_slug.title())},
+        )
 
         df = pd.read_excel(path)
         df.columns = [norm(c) for c in df.columns]
@@ -136,11 +137,7 @@ class Command(BaseCommand):
 
                 # Venue: we proberen 'Locatie/Omschrijving' eerst als venue naam te gebruiken (grof maar ok),
                 # en anders leeg laten. Later kunnen we dit verfijnen.
-                venue = None
-                if not source_url:
-                    # bij bestaande items staat locatie soms in Locatie/Omschrijving
-                    venue = get_or_create_venue(city, row.get("Locatie/Omschrijving"))
-
+                venue = get_or_create_venue(city, row.get("Locatie/Omschrijving"))
                 start_at = end_at = None
                 if date_text:
                     start_at, end_at = parse_dutch_date_range(date_text)
