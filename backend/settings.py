@@ -5,30 +5,25 @@ Django settings for backend project.
 import os
 from pathlib import Path
 
-import dj_database_url  # pip install dj-database-url
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # =========================
 # Security / env
 # =========================
-# Op Render zet je SECRET_KEY als environment variable.
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-secret")
 
-# Op Render: DEBUG=False
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-# ALLOWED_HOSTS: op Render zet je dit als env var, comma-separated
-# Voorbeeld value: "uitjes-backend.onrender.com"
+# ALLOWED_HOSTS (Render: "uitjes-backend.onrender.com" of "uitjes-backend.onrender.com,localhost,127.0.0.1")
 _allowed_hosts = os.environ.get("ALLOWED_HOSTS", "")
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(",") if h.strip()]
-
-# Handig voor lokaal als je niks zet:
 if DEBUG and not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["*"]
 
-# Voor proxy/https op platforms zoals Render
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Default primary key warnings fix
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # =========================
 # Application definition
@@ -63,7 +58,7 @@ INSTALLED_APPS = [
 SITE_ID = 1
 
 MIDDLEWARE = [
-    # CORS moet zo hoog mogelijk, vóór CommonMiddleware
+    # CORS moet helemaal bovenaan, vóór CommonMiddleware
     "corsheaders.middleware.CorsMiddleware",
 
     "django.middleware.security.SecurityMiddleware",
@@ -87,47 +82,66 @@ ROOT_URLCONF = "backend.urls"
 WSGI_APPLICATION = "backend.wsgi.application"
 
 # =========================
-# Auth / redirects (lokaal vs prod)
+# Render / proxy / https
 # =========================
+# Render draait achter een proxy (Cloudflare/Render). Hiermee snapt Django dat requests "https" zijn.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+# Allauth gebruikt dit om de juiste https callback/redirect urls te bouwen
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
+
+# (optioneel, maar vaak handig)
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() == "true"
+
+# =========================
+# Frontend origin + redirects
+# =========================
+# Render/PROD: FRONTEND_ORIGIN="https://uitjes-frontend.pages.dev"
+# Lokaal: default = http://localhost:3000
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000").rstrip("/")
+
+LOGIN_REDIRECT_URL = f"{FRONTEND_ORIGIN}/"
+LOGOUT_REDIRECT_URL = f"{FRONTEND_ORIGIN}/"
+
 SOCIALACCOUNT_LOGIN_ON_GET = True
 
-# Voor productie kun je dit sturen via env var:
-# RENDER/PROD: zet bijv. https://uitjes-frontend.pages.dev
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
-
-LOGIN_REDIRECT_URL = FRONTEND_ORIGIN + "/"
-LOGOUT_REDIRECT_URL = FRONTEND_ORIGIN + "/"
-
 # =========================
-# CORS + CSRF (voor cookie-based auth)
+# CORS + CSRF
 # =========================
-# Alleen je API routes CORS-en (aanrader)
+# Alleen API endpoints CORS geven (netter)
 CORS_URLS_REGEX = r"^/api/.*$"
 
-# Lokaal + production origin toestaan
-# Tip: voeg later preview origins toe als je wilt
+# Beste aanpak: neem FRONTEND_ORIGIN als bron van waarheid.
+# Je mag localhost er hard bij zetten zodat lokaal altijd werkt.
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://uitjes-frontend.pages.dev",
 ]
+if FRONTEND_ORIGIN.startswith("http"):
+    # voorkom dubbele entry
+    if FRONTEND_ORIGIN not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(FRONTEND_ORIGIN)
 
-# Als je cookie-based auth gebruikt tussen frontend en backend:
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.uitjes-frontend\.pages\.dev$",
-]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
-    "https://uitjes-frontend.pages.dev",
 ]
+if FRONTEND_ORIGIN.startswith("http"):
+    if FRONTEND_ORIGIN not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(FRONTEND_ORIGIN)
 
-# Cookies: voor local dev is Lax ok.
-# Als je cross-site cookies (Pages -> Render) echt gaat gebruiken, moet dit naar "None" + Secure.
+# =========================
+# Cookies (Pages ↔ Render)
+# =========================
+# Lokaal is Lax prima.
+# Voor cross-site cookies (frontend.pages.dev -> backend.onrender.com) moet SameSite=None + Secure=True.
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
 CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
 
-# Als je later cookies cross-site nodig hebt, zet je op Render:
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "true"
+
+# Aanrader op Render als je auth via cookies wil:
 # SESSION_COOKIE_SAMESITE=None
 # CSRF_COOKIE_SAMESITE=None
 # SESSION_COOKIE_SECURE=True
@@ -141,6 +155,7 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
+    # Events wil je public: AllowAny is prima, en voor protected endpoints zet je per-view permissions.
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
@@ -166,9 +181,10 @@ TEMPLATES = [
 ]
 
 # =========================
-# Database (Render Postgres via DATABASE_URL)
+# Database
 # =========================
-# Lokaal kun je sqlite houden, maar op Render zet je DATABASE_URL env var.
+# Render: DATABASE_URL env var (postgres)
+# Lokaal: sqlite fallback
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -176,7 +192,7 @@ DATABASES = {
         ssl_require=not DEBUG,
     )
 }
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 # =========================
 # Password validation
 # =========================
