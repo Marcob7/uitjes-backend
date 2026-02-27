@@ -114,6 +114,9 @@ CORS_ALLOWED_ORIGINS = [
 # Als je cookie-based auth gebruikt tussen frontend en backend:
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.uitjes-frontend\.pages\.dev$",
+]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "https://uitjes-frontend.pages.dev",
@@ -173,7 +176,7 @@ DATABASES = {
         ssl_require=not DEBUG,
     )
 }
-
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # =========================
 # Password validation
 # =========================
