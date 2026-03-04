@@ -8,6 +8,7 @@ from .views import (
   favorites_events,
   csrf,
   feedback_create,
+  me,
 )
 
 
@@ -27,5 +28,6 @@ urlpatterns = [
   # Favorites -> volledige events (alleen ingelogd)
   path("favorites/events/", favorites_events),
   
-    path("csrf/", csrf),
+  path("csrf/", csrf),
+  path("me/", me),
 ]

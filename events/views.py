@@ -15,6 +15,31 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from django.middleware.csrf import get_token
 
+from django.contrib.auth import get_user_model
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def me(request):
+    """
+    Geeft info terug over de huidige user (session-cookie).
+    Altijd 200, zodat de frontend simpel kan checken.
+    """
+    if not request.user or not request.user.is_authenticated:
+        return Response({"is_authenticated": False, "user": None})
+
+    u = request.user
+    return Response({
+        "is_authenticated": True,
+        "user": {
+            "id": u.id,
+            "email": getattr(u, "email", ""),
+            "username": getattr(u, "username", ""),
+            "first_name": getattr(u, "first_name", ""),
+            "last_name": getattr(u, "last_name", ""),
+        }
+    })
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
