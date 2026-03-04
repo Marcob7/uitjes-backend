@@ -11,12 +11,19 @@ from rest_framework import status
 from .models import Event, Feedback, Favorite
 from .serializers import EventSerializer, FeedbackSerializer, FavoriteSerializer
 
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.middleware.csrf import get_token
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
     return Response({"status": "ok"})
 
+@require_GET
+def csrf(request):
+    # get_token zorgt er ook voor dat Django de csrftoken cookie zet
+    return JsonResponse({"csrfToken": get_token(request)})
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -219,3 +226,4 @@ def favorites_events(request):
     events = [fav.event for fav in fav_qs]
     data = EventSerializer(events, many=True).data
     return Response(data)
+

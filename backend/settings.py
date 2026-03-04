@@ -115,6 +115,7 @@ CORS_URLS_REGEX = r"^/api/.*$"
 # Je mag localhost er hard bij zetten zodat lokaal altijd werkt.
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://uitjes-frontend.pages.dev",
 ]
 if FRONTEND_ORIGIN.startswith("http"):
     # voorkom dubbele entry
@@ -125,6 +126,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
+     "https://uitjes-frontend.pages.dev",
 ]
 if FRONTEND_ORIGIN.startswith("http"):
     if FRONTEND_ORIGIN not in CSRF_TRUSTED_ORIGINS:
@@ -135,18 +137,28 @@ if FRONTEND_ORIGIN.startswith("http"):
 # =========================
 # Lokaal is Lax prima.
 # Voor cross-site cookies (frontend.pages.dev -> backend.onrender.com) moet SameSite=None + Secure=True.
-SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
-CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+def parse_samesite(value, default="Lax"):
+    """
+    Render env vars zijn strings.
+    Django accepteert: "Lax", "Strict", "None" (string) of None (Python).
+    We normaliseren zodat "none"/"None" correct als "None" wordt gezet.
+    """
+    v = (value if value is not None else default)
+    v = str(v).strip()
+
+    if v.lower() == "none":
+        return "None"  # Django wil letterlijk "None" als string
+    if v.lower() == "lax":
+        return "Lax"
+    if v.lower() == "strict":
+        return "Strict"
+    return default
+
+SESSION_COOKIE_SAMESITE = parse_samesite(os.environ.get("SESSION_COOKIE_SAMESITE"), "Lax")
+CSRF_COOKIE_SAMESITE = parse_samesite(os.environ.get("CSRF_COOKIE_SAMESITE"), "Lax")
 
 SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
 CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "true"
-
-# Aanrader op Render als je auth via cookies wil:
-# SESSION_COOKIE_SAMESITE=None
-# CSRF_COOKIE_SAMESITE=None
-# SESSION_COOKIE_SECURE=True
-# CSRF_COOKIE_SECURE=True
-
 # =========================
 # DRF settings
 # =========================
