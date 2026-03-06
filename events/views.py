@@ -1,7 +1,15 @@
 from datetime import datetime, time, timedelta
+import hashlib
+import re
+import time as pytime
 
+from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Case, When, Value, IntegerField, Q
+from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -11,11 +19,37 @@ from rest_framework import status
 from .models import Event, Feedback, Favorite
 from .serializers import EventSerializer, FeedbackSerializer, FavoriteSerializer
 
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-from django.middleware.csrf import get_token
 
-from django.contrib.auth import get_user_model
+# =========================
+# Feedback anti-spam helpers
+# =========================
+URL_REGEX = re.compile(r"(https?://|www\.)", re.IGNORECASE)
+
+
+def get_client_ip(request):
+    """
+    Simpele IP detectie. Render zet meestal X-Forwarded-For.
+    We pakken het eerste IP in de chain.
+    """
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def hash_ip(ip: str) -> str:
+    """
+    Hash IP zodat je niet letterlijk IP's opslaat/logt.
+    """
+    if not ip:
+        return "no-ip"
+    return hashlib.sha256(ip.encode("utf-8")).hexdigest()
+
+
+def count_links(text: str) -> int:
+    if not text:
+        return 0
+    return len(URL_REGEX.findall(text))
 
 
 @api_view(["GET"])
@@ -40,15 +74,18 @@ def me(request):
         }
     })
 
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
     return Response({"status": "ok"})
 
+
 @require_GET
 def csrf(request):
     # get_token zorgt er ook voor dat Django de csrftoken cookie zet
     return JsonResponse({"csrfToken": get_token(request)})
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -192,7 +229,96 @@ def event_detail(request, event_id):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def feedback_create(request):
-    serializer = FeedbackSerializer(data=request.data)
+    """
+    Anti-spam maatregelen (anoniem):
+    1) Honeypot: veld 'website' moet leeg blijven
+    2) Minimum time-to-submit: 'form_started_at' (ms) moet >= FEEDBACK_MIN_SECONDS geleden zijn
+    3) Rate limit per IP hash: max FEEDBACK_RATE_LIMIT_MAX per window
+    4) Basic content checks: min lengte, max links
+
+    Let op:
+    - frontend stuurt extra velden mee zoals 'website' en 'form_started_at'
+    - die slaan we NIET op in het model
+    - daarom maken we hieronder een schone payload voor de serializer
+    """
+
+    # ---- 1) Honeypot ----
+    honeypot = (request.data.get("website") or "").strip()
+    if honeypot:
+        return Response(
+            {"detail": "Spam detected."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---- 2) Time-to-submit ----
+    min_seconds = getattr(settings, "FEEDBACK_MIN_SECONDS", 3)
+    started_at = request.data.get("form_started_at")
+
+    try:
+        started_at_ms = int(started_at)
+        now_ms = int(pytime.time() * 1000)
+        elapsed_seconds = (now_ms - started_at_ms) / 1000.0
+
+        if elapsed_seconds < min_seconds:
+            return Response(
+                {"detail": "Je hebt het formulier te snel verzonden. Probeer het opnieuw."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except (TypeError, ValueError):
+        return Response(
+            {"detail": "Ongeldige formulierdata."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---- 3) Rate limit per IP ----
+    ip = get_client_ip(request)
+    ip_h = hash_ip(ip)
+
+    max_hits = getattr(settings, "FEEDBACK_RATE_LIMIT_MAX", 5)
+    window = getattr(settings, "FEEDBACK_RATE_LIMIT_WINDOW_SECONDS", 600)
+
+    key = f"feedback:rl:{ip_h}"
+    current = cache.get(key, 0)
+
+    if current >= max_hits:
+        return Response(
+            {"detail": "Je hebt te vaak feedback verstuurd. Probeer het later opnieuw."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    if current == 0:
+        cache.set(key, 1, timeout=window)
+    else:
+        try:
+            cache.incr(key)
+        except ValueError:
+            # fallback voor cache backends die moeilijk doen met incr
+            cache.set(key, current + 1, timeout=window)
+
+    # ---- 4) Basic content checks ----
+    message = (request.data.get("message") or "").strip()
+
+    if len(message) < 10:
+        return Response(
+            {"detail": "Je bericht moet minimaal 10 tekens bevatten."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    max_links = getattr(settings, "FEEDBACK_MAX_LINKS", 2)
+    if count_links(message) > max_links:
+        return Response(
+            {"detail": "Je bericht bevat te veel links."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---- 5) Alleen echte model/serializer velden doorgeven ----
+    payload = {
+        "message": message,
+        "email": (request.data.get("email") or "").strip(),
+        "page_url": (request.data.get("page_url") or "").strip(),
+    }
+
+    serializer = FeedbackSerializer(data=payload)
 
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -201,7 +327,10 @@ def feedback_create(request):
         user_agent=request.META.get("HTTP_USER_AGENT", "")[:300],
     )
 
-    return Response(FeedbackSerializer(feedback).data, status=status.HTTP_201_CREATED)
+    return Response(
+        FeedbackSerializer(feedback).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET"])
@@ -251,4 +380,3 @@ def favorites_events(request):
     events = [fav.event for fav in fav_qs]
     data = EventSerializer(events, many=True).data
     return Response(data)
-

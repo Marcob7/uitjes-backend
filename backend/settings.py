@@ -234,3 +234,21 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     }
 }
+
+# =========================
+# Feedback anti-spam
+# =========================
+FEEDBACK_RATE_LIMIT_MAX = int(os.environ.get("FEEDBACK_RATE_LIMIT_MAX", "5"))
+FEEDBACK_RATE_LIMIT_WINDOW_SECONDS = int(
+    os.environ.get("FEEDBACK_RATE_LIMIT_WINDOW_SECONDS", "600")
+)  # 10 minuten
+
+FEEDBACK_MIN_SECONDS = int(os.environ.get("FEEDBACK_MIN_SECONDS", "3"))
+FEEDBACK_MAX_LINKS = int(os.environ.get("FEEDBACK_MAX_LINKS", "2"))
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "feedback-rate-limit",
+    }
+}
