@@ -15,6 +15,10 @@ class Venue(models.Model):
     city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="venues")
     address = models.CharField(max_length=255, blank=True)
 
+    # Coordinaten van de vaste locatie, bijvoorbeeld een restaurant, theater of museum
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
     def __str__(self):
         return f"{self.name} ({self.city.name})"
 
@@ -30,10 +34,19 @@ class Event(models.Model):
         related_name="events",
     )
 
-    # Nieuw: omschrijving uit Excel kunnen opslaan
+    # Omschrijving van het event
     description = models.TextField(blank=True, null=True)
 
-    # Belangrijk: niet elk item heeft een vaste datum (jaarrond, april–november, etc.)
+    # Optioneel specifiek adres voor dit event
+    # Dit is handig als een event een andere locatie heeft dan de standaard venue
+    address = models.CharField(max_length=255, blank=True, null=True)
+
+    # Optionele event-specifieke coordinaten
+    # Eerst gebruiken we deze, en als die leeg zijn vallen we later terug op de venue-coordinaten
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+    # Niet elk item heeft een vaste datum
     start_at = models.DateTimeField(null=True, blank=True)
     end_at = models.DateTimeField(null=True, blank=True)
 
@@ -43,7 +56,7 @@ class Event(models.Model):
     # Voor imports/upserts:
     # - source_url: liefst unieke bron (event pagina)
     # - date_text: originele datumtekst (ook bij jaarrond/perioden)
-    # - source: waar komt dit record vandaan (excel_apeldoorn / excel_deventer)
+    # - source: waar komt dit record vandaan
     # - dedupe_key: fallback unique key als er geen source_url is
     source_url = models.URLField(blank=True, null=True, db_index=True)
     date_text = models.CharField(max_length=255, blank=True, null=True)
@@ -54,7 +67,6 @@ class Event(models.Model):
 
     class Meta:
         constraints = [
-            # Fallback dedupe: binnen dezelfde stad mag dedupe_key maar 1x voorkomen.
             models.UniqueConstraint(
                 fields=["city", "dedupe_key"],
                 name="uniq_event_city_dedupe",
