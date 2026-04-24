@@ -5,32 +5,32 @@ import time as pytime
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Case, When, Value, IntegerField, Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
 
-from .models import Event, Feedback, Favorite
-from .serializers import EventSerializer, FeedbackSerializer, FavoriteSerializer
+from .models import Category, City, Event, Favorite, Feedback, Tag
+from .serializers import (
+    CategorySerializer,
+    CitySerializer,
+    EventSerializer,
+    FavoriteSerializer,
+    FeedbackSerializer,
+    TagSerializer,
+)
 
 
-# =========================
-# Feedback anti-spam helpers
-# =========================
 URL_REGEX = re.compile(r"(https?://|www\.)", re.IGNORECASE)
 
 
 def get_client_ip(request):
-    """
-    Simpele IP detectie. Render zet meestal X-Forwarded-For.
-    We pakken het eerste IP in de chain.
-    """
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     if xff:
         return xff.split(",")[0].strip()
@@ -38,9 +38,6 @@ def get_client_ip(request):
 
 
 def hash_ip(ip: str) -> str:
-    """
-    Hash IP zodat je niet letterlijk IP's opslaat/logt.
-    """
     if not ip:
         return "no-ip"
     return hashlib.sha256(ip.encode("utf-8")).hexdigest()
@@ -52,13 +49,202 @@ def count_links(text: str) -> int:
     return len(URL_REGEX.findall(text))
 
 
+def parse_bool(value):
+    if value is None:
+        return None
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_csv_param(value):
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def get_base_event_queryset():
+    return (
+        Event.objects.select_related("city", "venue", "category")
+        .prefetch_related("tags")
+        .all()
+        .annotate(
+            has_date=Case(
+                When(start_at__isnull=False, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("-has_date", "start_at", "title")
+    )
+
+
+def apply_when_filter(qs, when):
+    if not when:
+        return qs
+
+    now_local = timezone.localtime(timezone.now())
+
+    if when == "tonight":
+        start_dt = now_local.replace(hour=18, minute=0, second=0, microsecond=0)
+        end_of_day = now_local.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        if now_local > start_dt:
+            start_dt = now_local
+
+        return qs.filter(start_at__gte=start_dt, start_at__lte=end_of_day)
+
+    if when == "weekend":
+        weekday = now_local.weekday()
+        days_until_saturday = (5 - weekday) % 7
+
+        saturday_date = (now_local + timedelta(days=days_until_saturday)).date()
+        saturday_start = timezone.make_aware(datetime.combine(saturday_date, time(0, 0, 0)))
+
+        monday_date = saturday_date + timedelta(days=2)
+        monday_start = timezone.make_aware(datetime.combine(monday_date, time(0, 0, 0)))
+
+        if weekday in (5, 6) and now_local > saturday_start:
+            start_dt = now_local
+        else:
+            start_dt = saturday_start
+
+        return qs.filter(start_at__gte=start_dt, start_at__lt=monday_start)
+
+    return qs
+
+
+def apply_event_filters(qs, params):
+    city = params.get("city")
+    free = params.get("free")
+    when = params.get("when")
+    q = params.get("q")
+    search = params.get("search")
+    date_exact = params.get("date")
+    date_from = params.get("from")
+    date_to = params.get("to")
+    ongoing = params.get("ongoing")
+    category = params.get("category")
+    kind = params.get("kind")
+    indoor_outdoor = params.get("indoor_outdoor")
+    weather = params.get("weather")
+    audience = parse_csv_param(params.get("audience"))
+    moment = parse_csv_param(params.get("moment"))
+    vibe = parse_csv_param(params.get("vibe"))
+
+    needs_distinct = False
+
+    if city:
+        qs = qs.filter(city__slug=city)
+
+    if free == "1":
+        qs = qs.filter(is_free=True)
+
+    search_value = (search or q or "").strip()
+    if search_value:
+        qs = qs.filter(
+            Q(title__icontains=search_value)
+            | Q(summary__icontains=search_value)
+            | Q(description__icontains=search_value)
+            | Q(venue__name__icontains=search_value)
+            | Q(city__name__icontains=search_value)
+            | Q(category__name__icontains=search_value)
+            | Q(tags__name__icontains=search_value)
+        )
+        needs_distinct = True
+
+    if date_exact:
+        qs = qs.filter(start_at__date=date_exact)
+    if date_from:
+        qs = qs.filter(start_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(start_at__date__lte=date_to)
+
+    if ongoing in {"0", "1"}:
+        now = timezone.now()
+        ongoing_window = Q(start_at__lte=now, end_at__gte=now)
+
+        if ongoing == "1":
+            qs = qs.filter(ongoing_window)
+        else:
+            qs = qs.exclude(ongoing_window)
+
+    if category:
+        qs = qs.filter(category__slug=category)
+
+    if kind:
+        qs = qs.filter(kind=kind)
+
+    if indoor_outdoor:
+        qs = qs.filter(indoor_outdoor=indoor_outdoor)
+
+    if weather:
+        qs = qs.filter(weather_suitability=weather)
+
+    if parse_bool(params.get("featured")):
+        qs = qs.filter(is_featured=True)
+
+    if parse_bool(params.get("hidden_gem")):
+        qs = qs.filter(is_hidden_gem=True)
+
+    if parse_bool(params.get("today")):
+        today_local = timezone.localdate()
+        qs = qs.filter(start_at__date=today_local)
+
+    weekend_explicit = parse_bool(params.get("weekend"))
+    if weekend_explicit:
+        qs = apply_when_filter(qs, "weekend")
+    else:
+        qs = apply_when_filter(qs, when)
+
+    if audience:
+        qs = qs.filter(tags__facet=Tag.Facet.AUDIENCE, tags__slug__in=audience)
+        needs_distinct = True
+
+    if moment:
+        qs = qs.filter(tags__facet=Tag.Facet.MOMENT, tags__slug__in=moment)
+        needs_distinct = True
+
+    if vibe:
+        qs = qs.filter(tags__facet=Tag.Facet.VIBE, tags__slug__in=vibe)
+        needs_distinct = True
+
+    if needs_distinct:
+        qs = qs.distinct()
+
+    return qs
+
+
+def paginate_queryset(qs, params):
+    try:
+        limit = int(params.get("limit", 20))
+    except ValueError:
+        limit = 20
+
+    try:
+        offset = int(params.get("offset", 0))
+    except ValueError:
+        offset = 0
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    total = qs.count()
+    page_qs = qs[offset: offset + limit]
+    next_offset = offset + limit
+    has_more = next_offset < total
+
+    return {
+        "count": total,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": next_offset if has_more else None,
+        "has_more": has_more,
+        "results": EventSerializer(page_qs, many=True).data,
+    }
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def me(request):
-    """
-    Geeft info terug over de huidige user (session-cookie).
-    Altijd 200, zodat de frontend simpel kan checken.
-    """
     if not request.user or not request.user.is_authenticated:
         return Response({"is_authenticated": False, "user": None})
 
@@ -83,166 +269,118 @@ def health(request):
 
 @require_GET
 def csrf(request):
-    # get_token zorgt er ook voor dat Django de csrftoken cookie zet
     return JsonResponse({"csrfToken": get_token(request)})
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
-def events_list(request):
-    """
-    Query params:
-    - city=apeldoorn (City.slug)
-    - free=1
-    - when=tonight|weekend
-    - q=zoekterm
-    - from=YYYY-MM-DD
-    - to=YYYY-MM-DD
-    - ongoing=1 (alleen doorlopend) of ongoing=0 (verberg doorlopend)
-    - limit=20 (pagination)
-    - offset=0 (pagination)
-    """
+def cities_list(request):
+    qs = City.objects.all().order_by("name")
 
-    qs = (
-        Event.objects
-        .select_related("city", "venue")
-        .all()
-        .annotate(
-            has_date=Case(
-                When(start_at__isnull=False, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        )
-        .order_by("-has_date", "start_at", "title")
-    )
+    if parse_bool(request.query_params.get("active")):
+        qs = qs.filter(is_active=True)
 
-    # Query params
-    city = request.query_params.get("city")
-    free = request.query_params.get("free")
-    when = request.query_params.get("when")  # "tonight" | "weekend"
-    q = request.query_params.get("q")
-    date_from = request.query_params.get("from")  # YYYY-MM-DD
-    date_to = request.query_params.get("to")      # YYYY-MM-DD
-    ongoing = request.query_params.get("ongoing") # "1" of "0"
-
-    # Filters
-    if city:
-        qs = qs.filter(city__slug=city)
-
-    if free == "1":
-        qs = qs.filter(is_free=True)
-
+    q = (request.query_params.get("q") or "").strip()
     if q:
-        qs = qs.filter(
-            Q(title__icontains=q) |
-            Q(description__icontains=q) |
-            Q(venue__name__icontains=q)
-        )
+        qs = qs.filter(Q(name__icontains=q) | Q(slug__icontains=q))
 
-    if date_from:
-        qs = qs.filter(start_at__date__gte=date_from)
-    if date_to:
-        qs = qs.filter(start_at__date__lte=date_to)
+    return Response(CitySerializer(qs, many=True).data)
 
-    # Doorlopend filter (zet vóór when=tonight/weekend)
-    if ongoing == "1":
-        qs = qs.filter(start_at__isnull=True)
-    elif ongoing == "0":
-        qs = qs.filter(start_at__isnull=False)
 
-    # Tijd-filter: vanavond/weekend (werkt alleen voor events met start_at)
-    if when:
-        now_local = timezone.localtime(timezone.now())
-
-        if when == "tonight":
-            start_dt = now_local.replace(hour=18, minute=0, second=0, microsecond=0)
-            end_of_day = now_local.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-            if now_local > start_dt:
-                start_dt = now_local
-
-            qs = qs.filter(start_at__gte=start_dt, start_at__lte=end_of_day)
-
-        elif when == "weekend":
-            weekday = now_local.weekday()
-            days_until_saturday = (5 - weekday) % 7
-
-            saturday_date = (now_local + timedelta(days=days_until_saturday)).date()
-            saturday_start = timezone.make_aware(datetime.combine(saturday_date, time(0, 0, 0)))
-
-            monday_date = saturday_date + timedelta(days=2)
-            monday_start = timezone.make_aware(datetime.combine(monday_date, time(0, 0, 0)))
-
-            if weekday in (5, 6) and now_local > saturday_start:
-                start_dt = now_local
-            else:
-                start_dt = saturday_start
-
-            qs = qs.filter(start_at__gte=start_dt, start_at__lt=monday_start)
-
-    # Pagination: limit/offset
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def city_detail(request, slug):
     try:
-        limit = int(request.query_params.get("limit", 20))
-    except ValueError:
-        limit = 20
+        city = City.objects.get(slug=slug)
+    except City.DoesNotExist:
+        return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    try:
-        offset = int(request.query_params.get("offset", 0))
-    except ValueError:
-        offset = 0
+    return Response(CitySerializer(city).data)
 
-    # Grenzen (voorkomt extreme requests)
-    limit = max(1, min(limit, 100))
-    offset = max(0, offset)
 
-    total = qs.count()
-    page_qs = qs[offset: offset + limit]
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def categories_list(request):
+    qs = Category.objects.all().order_by("name")
 
-    results = EventSerializer(page_qs, many=True).data
+    if parse_bool(request.query_params.get("active")):
+        qs = qs.filter(is_active=True)
 
-    next_offset = offset + limit
-    has_more = next_offset < total
+    kind = request.query_params.get("kind")
+    if kind:
+        qs = qs.filter(kind=kind)
 
-    return Response({
-        "count": total,
-        "limit": limit,
-        "offset": offset,
-        "next_offset": next_offset if has_more else None,
-        "has_more": has_more,
-        "results": results,
-    })
+    return Response(CategorySerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def tags_list(request):
+    qs = Tag.objects.all().order_by("facet", "name")
+
+    if parse_bool(request.query_params.get("active")):
+        qs = qs.filter(is_active=True)
+
+    facet = request.query_params.get("facet")
+    if facet:
+        qs = qs.filter(facet=facet)
+
+    return Response(TagSerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def events_list(request):
+    qs = get_base_event_queryset()
+    qs = apply_event_filters(qs, request.query_params)
+    return Response(paginate_queryset(qs, request.query_params))
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def festivals_list(request):
+    params = request.query_params.copy()
+    params["kind"] = Event.Kind.FESTIVAL
+    qs = get_base_event_queryset()
+    qs = apply_event_filters(qs, params)
+    return Response(paginate_queryset(qs, params))
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def event_detail(request, event_id):
     try:
-        event = Event.objects.select_related("city", "venue").get(id=event_id)
+        event = (
+            Event.objects.select_related("city", "venue", "category")
+            .prefetch_related("tags")
+            .get(id=event_id)
+        )
     except Event.DoesNotExist:
         return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    data = EventSerializer(event).data
-    return Response(data)
+    return Response(EventSerializer(event).data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def event_detail_by_slug(request, slug):
+    event = (
+        Event.objects.select_related("city", "venue", "category")
+        .prefetch_related("tags")
+        .filter(slug=slug)
+        .order_by("id")
+        .first()
+    )
+
+    if event is None:
+        return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(EventSerializer(event).data)
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def feedback_create(request):
-    """
-    Anti-spam maatregelen (anoniem):
-    1) Honeypot: veld 'website' moet leeg blijven
-    2) Minimum time-to-submit: 'form_started_at' (ms) moet >= FEEDBACK_MIN_SECONDS geleden zijn
-    3) Rate limit per IP hash: max FEEDBACK_RATE_LIMIT_MAX per window
-    4) Basic content checks: min lengte, max links
-
-    Let op:
-    - frontend stuurt extra velden mee zoals 'website' en 'form_started_at'
-    - die slaan we NIET op in het model
-    - daarom maken we hieronder een schone payload voor de serializer
-    """
-
-    # ---- 1) Honeypot ----
     honeypot = (request.data.get("website") or "").strip()
     if honeypot:
         return Response(
@@ -250,7 +388,6 @@ def feedback_create(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # ---- 2) Time-to-submit ----
     min_seconds = getattr(settings, "FEEDBACK_MIN_SECONDS", 3)
     started_at = request.data.get("form_started_at")
 
@@ -270,7 +407,6 @@ def feedback_create(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # ---- 3) Rate limit per IP ----
     ip = get_client_ip(request)
     ip_h = hash_ip(ip)
 
@@ -292,10 +428,8 @@ def feedback_create(request):
         try:
             cache.incr(key)
         except ValueError:
-            # fallback voor cache backends die moeilijk doen met incr
             cache.set(key, current + 1, timeout=window)
 
-    # ---- 4) Basic content checks ----
     message = (request.data.get("message") or "").strip()
 
     if len(message) < 10:
@@ -311,7 +445,6 @@ def feedback_create(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # ---- 5) Alleen echte model/serializer velden doorgeven ----
     payload = {
         "message": message,
         "email": (request.data.get("email") or "").strip(),
@@ -373,7 +506,8 @@ def favorites_events(request):
     fav_qs = (
         Favorite.objects
         .filter(user=request.user)
-        .select_related("event", "event__city", "event__venue")
+        .select_related("event", "event__city", "event__venue", "event__category")
+        .prefetch_related("event__tags")
         .order_by("-created_at")
     )
 
