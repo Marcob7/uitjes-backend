@@ -4,6 +4,7 @@ from .views import (
   cities_list,
   city_detail,
   event_detail_by_slug,
+  events_data_quality,
   events_list,
   event_detail,
   festivals_list,
@@ -30,6 +31,7 @@ urlpatterns = [
 
   # Public events
   path("events/", events_list),
+  path("data-quality/events/", events_data_quality),
   path("events/by-slug/<slug:slug>/", event_detail_by_slug),
   path("events/<int:event_id>/", event_detail),
   path("festivals/", festivals_list),

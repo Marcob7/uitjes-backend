@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # =========================
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-secret")
 
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 
 # ALLOWED_HOSTS (Render: "uitjes-backend.onrender.com" of "uitjes-backend.onrender.com,localhost,127.0.0.1")
 _allowed_hosts = os.environ.get("ALLOWED_HOSTS", "")

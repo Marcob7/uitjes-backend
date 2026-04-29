@@ -5,7 +5,7 @@ import time as pytime
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -59,6 +59,65 @@ def parse_csv_param(value):
     if not value:
         return []
     return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def has_text(value):
+    return bool(str(value or "").strip())
+
+
+def event_discover_missing_fields(event):
+    missing_fields = []
+
+    if not has_text(event.title):
+        missing_fields.append("title")
+    if not event.city_id:
+        missing_fields.append("city")
+    if not event.category_id:
+        missing_fields.append("category")
+    if not has_text(event.summary):
+        missing_fields.append("summary")
+    if not has_text(event.image_url):
+        missing_fields.append("image_url")
+    if not event.venue_id and not has_text(event.address):
+        missing_fields.append("venue_or_address")
+    if not event.start_at and not has_text(event.raw_date_text) and not has_text(event.date_text):
+        missing_fields.append("date")
+
+    return missing_fields
+
+
+def event_is_discover_ready(event):
+    return not event_discover_missing_fields(event)
+
+
+def get_discover_ready_filter():
+    has_location = Q(venue__isnull=False) | (
+        Q(address__isnull=False) & ~Q(address__exact="")
+    )
+    has_date = (
+        Q(start_at__isnull=False)
+        | (Q(raw_date_text__isnull=False) & ~Q(raw_date_text__exact=""))
+        | (Q(date_text__isnull=False) & ~Q(date_text__exact=""))
+    )
+
+    return (
+        Q(title__isnull=False)
+        & ~Q(title__exact="")
+        & Q(city__isnull=False)
+        & Q(category__isnull=False)
+        & Q(summary__isnull=False)
+        & ~Q(summary__exact="")
+        & Q(image_url__isnull=False)
+        & ~Q(image_url__exact="")
+        & has_location
+        & has_date
+    )
+
+
+def get_effective_coordinates_filter():
+    event_coordinates = Q(latitude__isnull=False) & Q(longitude__isnull=False)
+    venue_coordinates = Q(venue__latitude__isnull=False) & Q(venue__longitude__isnull=False)
+    return event_coordinates | venue_coordinates
 
 
 def get_base_event_queryset():
@@ -344,6 +403,81 @@ def festivals_list(request):
     qs = get_base_event_queryset()
     qs = apply_event_filters(qs, params)
     return Response(paginate_queryset(qs, params))
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def events_data_quality(request):
+    qs = Event.objects.select_related("city", "venue", "category").prefetch_related("tags")
+
+    city = (request.query_params.get("city") or "").strip()
+    if city:
+        qs = qs.filter(city__slug=city)
+
+    total = qs.count()
+    discover_ready_filter = get_discover_ready_filter()
+    coordinates_filter = get_effective_coordinates_filter()
+
+    aggregates = qs.aggregate(
+        with_category=Count("id", filter=Q(category__isnull=False), distinct=True),
+        with_summary=Count(
+            "id",
+            filter=Q(summary__isnull=False) & ~Q(summary__exact=""),
+            distinct=True,
+        ),
+        with_image_url=Count(
+            "id",
+            filter=Q(image_url__isnull=False) & ~Q(image_url__exact=""),
+            distinct=True,
+        ),
+        with_coordinates=Count("id", filter=coordinates_filter, distinct=True),
+        with_venue=Count("id", filter=Q(venue__isnull=False), distinct=True),
+        with_start_at=Count("id", filter=Q(start_at__isnull=False), distinct=True),
+        with_tags=Count("id", filter=Q(tags__isnull=False), distinct=True),
+        featured=Count("id", filter=Q(is_featured=True), distinct=True),
+        hidden_gem=Count("id", filter=Q(is_hidden_gem=True), distinct=True),
+        discover_ready=Count("id", filter=discover_ready_filter, distinct=True),
+    )
+
+    by_city = {
+        item["city__slug"]: item["count"]
+        for item in qs.values("city__slug").annotate(count=Count("id")).order_by("city__slug")
+    }
+
+    incomplete_records = []
+    for event in qs.exclude(discover_ready_filter).order_by("id")[:50]:
+        missing_fields = event_discover_missing_fields(event)
+        incomplete_records.append({
+            "id": event.id,
+            "title": event.title,
+            "city": event.city.slug if event.city_id else None,
+            "missing_fields": missing_fields,
+            "discover_ready": event_is_discover_ready(event),
+        })
+
+    return Response({
+        "total_events": total,
+        "events_per_city": by_city,
+        "with_category": aggregates["with_category"],
+        "without_category": total - aggregates["with_category"],
+        "with_summary": aggregates["with_summary"],
+        "without_summary": total - aggregates["with_summary"],
+        "with_image_url": aggregates["with_image_url"],
+        "without_image_url": total - aggregates["with_image_url"],
+        "with_coordinates": aggregates["with_coordinates"],
+        "without_coordinates": total - aggregates["with_coordinates"],
+        "with_venue": aggregates["with_venue"],
+        "without_venue": total - aggregates["with_venue"],
+        "with_start_at": aggregates["with_start_at"],
+        "without_start_at": total - aggregates["with_start_at"],
+        "with_tags": aggregates["with_tags"],
+        "without_tags": total - aggregates["with_tags"],
+        "featured": aggregates["featured"],
+        "hidden_gem": aggregates["hidden_gem"],
+        "discover_ready": aggregates["discover_ready"],
+        "not_discover_ready": total - aggregates["discover_ready"],
+        "incomplete_records": incomplete_records,
+    })
 
 
 @api_view(["GET"])
