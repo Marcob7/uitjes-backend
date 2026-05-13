@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
   categories_list,
   cities_list,
+  city_content_list,
   city_detail,
   event_detail_by_slug,
   events_data_quality,
@@ -30,6 +31,7 @@ urlpatterns = [
   path("tags/", tags_list),
 
   # Public events
+  path("city-content/", city_content_list),
   path("events/", events_list),
   path("data-quality/events/", events_data_quality),
   path("events/by-slug/<slug:slug>/", event_detail_by_slug),

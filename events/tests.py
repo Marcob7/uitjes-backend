@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import tempfile
 from datetime import timedelta
@@ -220,6 +221,212 @@ class EventsApiTests(TestCase):
         self.assertEqual(payload["incomplete_records"], [])
 
 
+class CityContentApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.city = City.objects.create(name="Harderwijk", slug="harderwijk")
+        self.lelystad = City.objects.create(name="Lelystad", slug="lelystad")
+        self.other_city = City.objects.create(name="Deventer", slug="deventer")
+        self.activity_category, _ = Category.objects.get_or_create(
+            slug="activiteit",
+            defaults={
+                "name": "Activiteit",
+                "kind": Event.Kind.ACTIVITY,
+            },
+        )
+        self.food_category, _ = Category.objects.get_or_create(
+            slug="restaurant",
+            defaults={
+                "name": "Restaurant",
+                "kind": Event.Kind.FOOD_DRINK,
+            },
+        )
+        self.venue = Venue.objects.create(
+            name="Museum Harderwijk",
+            slug="museum-harderwijk",
+            city=self.city,
+            address="Markt 1",
+            latitude="52.350000",
+            longitude="5.620000",
+        )
+        self.tag = Tag.objects.create(
+            name="Gezinnen",
+            slug="gezinnen",
+            facet=Tag.Facet.AUDIENCE,
+        )
+        self.outing = Event.objects.create(
+            title="Museumwandeling Harderwijk",
+            slug="museumwandeling-harderwijk",
+            kind=Event.Kind.ACTIVITY,
+            city=self.city,
+            venue=self.venue,
+            category=self.activity_category,
+            summary="Een wandeling langs het museum.",
+            description="Route door de stad met museumstop.",
+            source_url="https://example.com/museumwandeling",
+            ticket_url="nan",
+            image_url="NaN",
+            price_note="",
+        )
+        self.outing.tags.add(self.tag)
+        self.food = Event.objects.create(
+            title="Lunch aan de haven",
+            slug="lunch-aan-de-haven",
+            kind=Event.Kind.FOOD_DRINK,
+            city=self.city,
+            category=self.food_category,
+            summary="Lunchplek aan de haven.",
+            description="Restaurant met terras.",
+            address="Havenkade 2",
+            latitude="52.351000",
+            longitude="5.621000",
+            source_url="https://example.com/lunch-aan-de-haven",
+            price_note="n/a",
+        )
+        Event.objects.create(
+            title="Deventer wandeling",
+            slug="deventer-wandeling",
+            kind=Event.Kind.ACTIVITY,
+            city=self.other_city,
+            category=self.activity_category,
+            source_url="https://example.com/deventer-wandeling",
+        )
+        self.lelystad_outing = Event.objects.create(
+            title="Lelystad stadswandeling",
+            slug="lelystad-stadswandeling",
+            kind=Event.Kind.ACTIVITY,
+            city=self.lelystad,
+            category=self.activity_category,
+            source="city_content:outings",
+            source_url="https://example.com/lelystad-stadswandeling",
+        )
+        self.lelystad_food = Event.objects.create(
+            title="Lelystad restaurant",
+            slug="lelystad-restaurant",
+            kind=Event.Kind.FOOD_DRINK,
+            city=self.lelystad,
+            category=self.food_category,
+            source="city_content:food_drink",
+            source_url="https://example.com/lelystad-restaurant",
+        )
+        for title, slug, kind in [
+            ("Lelystad snackbar", "lelystad-snackbar", "snackbar"),
+            ("Lelystad ijssalon", "lelystad-ijssalon", "ice_cream"),
+            ("Lelystad strandpaviljoen", "lelystad-strandpaviljoen", "beach_pavilion"),
+        ]:
+            Event.objects.create(
+                title=title,
+                slug=slug,
+                kind=kind,
+                city=self.lelystad,
+                category=self.food_category,
+                source="city_content:food_drink",
+                source_url=f"https://example.com/{slug}",
+            )
+        Event.objects.create(
+            title="Lelystad food paviljoen",
+            slug="lelystad-food-paviljoen",
+            kind=Event.Kind.PLACE,
+            city=self.lelystad,
+            category=self.food_category,
+            source="city_content:food_drink",
+            source_url="https://example.com/lelystad-food-paviljoen",
+        )
+        Event.objects.create(
+            title="Lelystad gewoon park",
+            slug="lelystad-gewoon-park",
+            kind=Event.Kind.PLACE,
+            city=self.lelystad,
+            category=self.activity_category,
+            source="city_content:outings",
+            source_url="https://example.com/lelystad-gewoon-park",
+        )
+
+    def test_city_content_endpoint_returns_200(self):
+        response = self.client.get("/api/city-content/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("results", response.json())
+
+    def test_city_filter_returns_only_requested_city(self):
+        response = self.client.get("/api/city-content/?city=harderwijk")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual({item["city"] for item in payload["results"]}, {"harderwijk"})
+
+    def test_type_food_drink_returns_food_drink(self):
+        response = self.client.get("/api/city-content/?city=harderwijk&type=food_drink")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["kind"], Event.Kind.FOOD_DRINK)
+
+    def test_type_outings_excludes_food_drink(self):
+        response = self.client.get("/api/city-content/?city=harderwijk&type=outings")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        returned_kinds = {item["kind"] for item in payload["results"]}
+        self.assertNotIn(Event.Kind.FOOD_DRINK, returned_kinds)
+
+    def test_type_food_drink_includes_food_drink_subtypes(self):
+        response = self.client.get("/api/city-content/?city=lelystad&type=food_drink&limit=20")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 5)
+        returned_kinds = {item["kind"] for item in payload["results"]}
+        self.assertEqual(
+            returned_kinds,
+            {
+                Event.Kind.FOOD_DRINK,
+                "snackbar",
+                "ice_cream",
+                "beach_pavilion",
+                Event.Kind.PLACE,
+            },
+        )
+
+    def test_type_outings_excludes_food_drink_subtypes(self):
+        response = self.client.get("/api/city-content/?city=lelystad&type=outings&limit=20")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 2)
+        returned_slugs = {item["slug"] for item in payload["results"]}
+        self.assertEqual(returned_slugs, {"lelystad-stadswandeling", "lelystad-gewoon-park"})
+
+    def test_harderwijk_counts_remain_unchanged_with_food_drink_mapping(self):
+        food_response = self.client.get("/api/city-content/?city=harderwijk&type=food_drink")
+        outings_response = self.client.get("/api/city-content/?city=harderwijk&type=outings")
+
+        self.assertEqual(food_response.status_code, 200)
+        self.assertEqual(outings_response.status_code, 200)
+        self.assertEqual(food_response.json()["count"], 1)
+        self.assertEqual(outings_response.json()["count"], 1)
+
+    def test_query_filter_searches_without_crashing(self):
+        response = self.client.get("/api/city-content/?city=harderwijk&query=museum")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["slug"], self.outing.slug)
+
+    def test_nan_like_values_are_serialized_as_null(self):
+        response = self.client.get("/api/city-content/?city=harderwijk&type=outings")
+        self.assertEqual(response.status_code, 200)
+
+        item = response.json()["results"][0]
+        self.assertIsNone(item["ticket_url"])
+        self.assertIsNone(item["image_url"])
+        self.assertIsNone(item["price_note"])
+        self.assertNotIn('"nan"', json.dumps(response.json()).lower())
+
+
 class FavoritesCompatibilityTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -404,6 +611,7 @@ class ImportCommandTests(TestCase):
             if os.path.exists(path):
                 os.unlink(path)
 
+
     def test_import_command_dry_run_does_not_change_database(self):
         Event.objects.create(
             title="Bestaand Zwolle Event",
@@ -539,6 +747,189 @@ class ImportCommandTests(TestCase):
             self.assertEqual(len(second_rows), 1)
             self.assertEqual(second_rows[0]["action"], "updated")
             self.assertEqual(second_rows[0]["event_id"], first_rows[0]["event_id"])
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+class CityContentImportCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Harderwijk", slug="harderwijk")
+        self.category, _ = Category.objects.get_or_create(
+            slug="cultuur",
+            defaults={"name": "Cultuur", "kind": Event.Kind.EVENT},
+        )
+
+    def _create_city_content_excel_file(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Master template"
+        sheet.append([
+            "City",
+            "Naam/Activiteit",
+            "Slug",
+            "Kind",
+            "Category",
+            "DatumRaw",
+            "Venue",
+            "Address",
+            "Latitude",
+            "Longitude",
+            "Summary",
+            "Omschrijving",
+            "SourceUrl",
+            "ImageUrl",
+            "PriceNote",
+            "IndoorOutdoor",
+            "WeatherSuitability",
+            "LastCheckedAt",
+        ])
+        sheet.append([
+            "harderwijk",
+            "Nieuwe stadswandeling",
+            "nieuwe-stadswandeling",
+            "activity",
+            "Cultuur",
+            "1 januari 2026",
+            "Binnenstad",
+            "Markt 1",
+            "52.350000",
+            "5.620000",
+            "Een compacte stadswandeling.",
+            "Een volledige beschrijving van de stadswandeling door Harderwijk.",
+            "https://example.com/nieuwe-stadswandeling",
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+        sheet.append([
+            "harderwijk",
+            "Bestaande stadswandeling",
+            "bestaande-stadswandeling",
+            "activity",
+            "Cultuur",
+            "2 januari 2026",
+            "Binnenstad",
+            "Markt 2",
+            "52.350001",
+            "5.620001",
+            "Een bestaande stadswandeling.",
+            "Een volledige beschrijving van een bestaande stadswandeling.",
+            "https://example.com/bestaande-stadswandeling-nieuwe-bron",
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+        sheet.append([
+            "harderwijk",
+            "",
+            "",
+            "activity",
+            "Cultuur",
+            "3 januari 2026",
+            "Binnenstad",
+            "Markt 3",
+            "52.350002",
+            "5.620002",
+            "Deze rij mist een titel.",
+            "Deze rij heeft expres een ontbrekende titel en mag niet importeren.",
+            "https://example.com/missing-title",
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_file.close()
+        workbook.save(temp_file.name)
+        return temp_file.name
+
+    def test_city_content_dry_run_does_not_write_database(self):
+        path = self._create_city_content_excel_file()
+        before_counts = {
+            "events": Event.objects.count(),
+            "venues": Venue.objects.count(),
+            "tags": Tag.objects.count(),
+        }
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                dry_run=True,
+                no_report_file=True,
+                stdout=stdout,
+            )
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+        self.assertEqual(Event.objects.count(), before_counts["events"])
+        self.assertEqual(Venue.objects.count(), before_counts["venues"])
+        self.assertEqual(Tag.objects.count(), before_counts["tags"])
+        self.assertIn("DRY RUN ONLY: no database changes were written.", stdout.getvalue())
+
+    def test_city_content_commit_imports_valid_rows_and_skips_errors_and_duplicates(self):
+        existing = Event.objects.create(
+            title="Bestaande stadswandeling",
+            slug="bestaande-stadswandeling",
+            kind=Event.Kind.ACTIVITY,
+            city=self.city,
+            summary="Niet overschrijven",
+            source_url="https://example.com/originele-bron",
+        )
+        path = self._create_city_content_excel_file()
+        report_dir = tempfile.mkdtemp()
+        report_path = os.path.join(report_dir, "city_content_commit.json")
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                report_file=report_path,
+                stdout=stdout,
+            )
+
+            self.assertEqual(Event.objects.filter(city=self.city).count(), 2)
+            imported = Event.objects.get(slug="nieuwe-stadswandeling")
+            self.assertEqual(imported.kind, Event.Kind.ACTIVITY)
+            self.assertEqual(imported.source, "city_content:outings")
+            self.assertEqual(imported.category, self.category)
+
+            existing.refresh_from_db()
+            self.assertEqual(existing.summary, "Niet overschrijven")
+            self.assertEqual(existing.source_url, "https://example.com/originele-bron")
+
+            with open(report_path, encoding="utf-8") as report_file:
+                report = json.load(report_file)
+
+            self.assertEqual(report["summary"]["mode"], "commit")
+            self.assertEqual(report["summary"]["total_rows"], 3)
+            self.assertEqual(report["summary"]["valid_rows"], 2)
+            self.assertEqual(report["summary"]["rows_with_errors"], 1)
+            self.assertEqual(report["summary"]["imported_rows"], 1)
+            self.assertEqual(report["summary"]["skipped_error_rows"], 1)
+            self.assertEqual(report["summary"]["skipped_duplicate_rows"], 1)
+            self.assertEqual(report["summary"]["not_imported_rows"], 2)
+
+            actions = {row["row_number"]: row["action"] for row in report["rows"]}
+            self.assertEqual(actions[2], "imported")
+            self.assertEqual(actions[3], "skipped_duplicate")
+            self.assertEqual(actions[4], "skipped_error")
+            self.assertIn("COMMIT complete", stdout.getvalue())
         finally:
             if os.path.exists(path):
                 os.unlink(path)

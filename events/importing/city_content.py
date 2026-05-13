@@ -332,8 +332,8 @@ class CityContentWorkbook:
         if not self.path.exists():
             raise FileNotFoundError(f"Excel file not found: {self.path}")
 
-        xls = pd.ExcelFile(self.path)
-        sheet_name = self._pick_sheet(xls)
+        with pd.ExcelFile(self.path) as xls:
+            sheet_name = self._pick_sheet(xls)
         df = pd.read_excel(self.path, sheet_name=sheet_name)
         df = df.dropna(how="all").copy()
         df.columns = [normalize_text(column) for column in df.columns]

@@ -152,6 +152,116 @@ class EventSerializer(serializers.ModelSerializer):
         ]
 
 
+def normalize_api_value(value):
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.lower() in {"nan", "none", "null", "n/a", "na"}:
+            return None
+        return cleaned
+
+    return value
+
+
+class CityContentSerializer(serializers.ModelSerializer):
+    city = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
+    venue = serializers.SerializerMethodField()
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+    price_note = serializers.SerializerMethodField()
+    source_url = serializers.SerializerMethodField()
+    ticket_url = serializers.SerializerMethodField()
+    reservation_url = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+
+    def get_city(self, obj):
+        if obj.city_id:
+            return normalize_api_value(obj.city.slug)
+        return None
+
+    def get_category(self, obj):
+        if obj.category_id:
+            return normalize_api_value(obj.category.name)
+        return None
+
+    def get_image_url(self, obj):
+        return normalize_api_value(obj.image_url)
+
+    def get_venue(self, obj):
+        if obj.venue_id:
+            return normalize_api_value(obj.venue.name)
+        return None
+
+    def get_latitude(self, obj):
+        if obj.latitude is not None:
+            return float(obj.latitude)
+        if obj.venue and obj.venue.latitude is not None:
+            return float(obj.venue.latitude)
+        return None
+
+    def get_longitude(self, obj):
+        if obj.longitude is not None:
+            return float(obj.longitude)
+        if obj.venue and obj.venue.longitude is not None:
+            return float(obj.venue.longitude)
+        return None
+
+    def get_price_note(self, obj):
+        return normalize_api_value(obj.price_note)
+
+    def get_source_url(self, obj):
+        return normalize_api_value(obj.source_url)
+
+    def get_ticket_url(self, obj):
+        return normalize_api_value(obj.ticket_url)
+
+    def get_reservation_url(self, obj):
+        return None
+
+    def get_tags(self, obj):
+        return [
+            tag.slug
+            for tag in obj.tags.all()
+            if normalize_api_value(tag.slug) is not None
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for field in ("slug", "title", "kind", "summary"):
+            data[field] = normalize_api_value(data.get(field))
+        return data
+
+    class Meta:
+        model = Event
+        fields = [
+            "id",
+            "slug",
+            "title",
+            "city",
+            "kind",
+            "category",
+            "summary",
+            "image_url",
+            "venue",
+            "latitude",
+            "longitude",
+            "price_note",
+            "is_free",
+            "start_at",
+            "end_at",
+            "source_url",
+            "ticket_url",
+            "reservation_url",
+            "tags",
+        ]
+
+
 class FeedbackSerializer(serializers.ModelSerializer):
     message = serializers.CharField(
         allow_blank=False,

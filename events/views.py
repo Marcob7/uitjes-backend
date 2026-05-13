@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from .models import Category, City, Event, Favorite, Feedback, Tag
 from .serializers import (
     CategorySerializer,
+    CityContentSerializer,
     CitySerializer,
     EventSerializer,
     FavoriteSerializer,
@@ -393,6 +394,85 @@ def events_list(request):
     qs = get_base_event_queryset()
     qs = apply_event_filters(qs, request.query_params)
     return Response(paginate_queryset(qs, request.query_params))
+
+
+FOOD_DRINK_KINDS = {
+    Event.Kind.FOOD_DRINK,
+    "snackbar",
+    "ice_cream",
+    "beach_pavilion",
+}
+
+
+def food_drink_content_query():
+    return Q(kind__in=FOOD_DRINK_KINDS) | Q(kind=Event.Kind.PLACE, source="city_content:food_drink")
+
+
+def apply_city_content_filters(qs, params):
+    city = (params.get("city") or "").strip()
+    content_type = (params.get("type") or params.get("kind") or "").strip()
+    query = (params.get("query") or params.get("q") or params.get("search") or "").strip()
+
+    if city:
+        qs = qs.filter(Q(city__slug__iexact=city) | Q(city__name__iexact=city))
+
+    if content_type:
+        if content_type == "outings":
+            qs = qs.exclude(food_drink_content_query())
+        elif content_type == Event.Kind.FOOD_DRINK:
+            qs = qs.filter(food_drink_content_query())
+        else:
+            qs = qs.filter(kind=content_type)
+
+    if query:
+        qs = qs.filter(
+            Q(title__icontains=query)
+            | Q(summary__icontains=query)
+            | Q(description__icontains=query)
+            | Q(venue__name__icontains=query)
+            | Q(address__icontains=query)
+            | Q(category__name__icontains=query)
+            | Q(category__slug__icontains=query)
+        )
+
+    return qs.distinct()
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def city_content_list(request):
+    qs = get_base_event_queryset()
+    qs = apply_city_content_filters(qs, request.query_params)
+    return Response(paginate_city_content_queryset(qs, request.query_params))
+
+
+def paginate_city_content_queryset(qs, params):
+    try:
+        limit = int(params.get("limit", 20))
+    except ValueError:
+        limit = 20
+
+    try:
+        offset = int(params.get("offset", 0))
+    except ValueError:
+        offset = 0
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    total = qs.count()
+    page_qs = qs[offset: offset + limit]
+    next_offset = offset + limit
+    has_more = next_offset < total
+
+    return {
+        "count": total,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": next_offset if has_more else None,
+        "has_more": has_more,
+        "results": CityContentSerializer(page_qs, many=True).data,
+    }
 
 
 @api_view(["GET"])
