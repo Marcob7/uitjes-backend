@@ -850,6 +850,77 @@ class CityContentImportCommandTests(TestCase):
         workbook.save(temp_file.name)
         return temp_file.name
 
+    def _create_city_content_excel_file_with_shared_source_url(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Master template"
+        sheet.append([
+            "City",
+            "Naam/Activiteit",
+            "Slug",
+            "Kind",
+            "Category",
+            "DatumRaw",
+            "Venue",
+            "Address",
+            "Latitude",
+            "Longitude",
+            "Summary",
+            "Omschrijving",
+            "SourceUrl",
+            "ImageUrl",
+            "PriceNote",
+            "IndoorOutdoor",
+            "WeatherSuitability",
+            "LastCheckedAt",
+        ])
+        shared_source_url = "https://example.com/amersfoort-agenda"
+        sheet.append([
+            "harderwijk",
+            "Eerste agenda-item",
+            "eerste-agenda-item",
+            "event",
+            "Cultuur",
+            "1 januari 2026",
+            "Binnenstad",
+            "Markt 1",
+            "52.350000",
+            "5.620000",
+            "Een compact agenda-item.",
+            "Een volledige beschrijving van het eerste agenda-item.",
+            shared_source_url,
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+        sheet.append([
+            "harderwijk",
+            "Tweede agenda-item",
+            "tweede-agenda-item",
+            "event",
+            "Cultuur",
+            "2 januari 2026",
+            "Binnenstad",
+            "Markt 2",
+            "52.350001",
+            "5.620001",
+            "Nog een compact agenda-item.",
+            "Een volledige beschrijving van het tweede agenda-item.",
+            shared_source_url,
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_file.close()
+        workbook.save(temp_file.name)
+        return temp_file.name
+
     def test_city_content_dry_run_does_not_write_database(self):
         path = self._create_city_content_excel_file()
         before_counts = {
@@ -929,6 +1000,43 @@ class CityContentImportCommandTests(TestCase):
             self.assertEqual(actions[2], "imported")
             self.assertEqual(actions[3], "skipped_duplicate")
             self.assertEqual(actions[4], "skipped_error")
+            self.assertIn("COMMIT complete", stdout.getvalue())
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_allows_different_slugs_with_same_source_url(self):
+        path = self._create_city_content_excel_file_with_shared_source_url()
+        report_dir = tempfile.mkdtemp()
+        report_path = os.path.join(report_dir, "city_content_shared_source_url.json")
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                report_file=report_path,
+                stdout=stdout,
+            )
+
+            self.assertEqual(Event.objects.filter(city=self.city).count(), 2)
+            self.assertTrue(Event.objects.filter(slug="eerste-agenda-item").exists())
+            self.assertTrue(Event.objects.filter(slug="tweede-agenda-item").exists())
+
+            with open(report_path, encoding="utf-8") as report_file:
+                report = json.load(report_file)
+
+            self.assertEqual(report["summary"]["imported_rows"], 2)
+            self.assertEqual(report["summary"]["skipped_duplicate_rows"], 0)
+            actions = {row["row_number"]: row["action"] for row in report["rows"]}
+            self.assertEqual(actions[2], "imported")
+            self.assertEqual(actions[3], "imported")
+            self.assertTrue(
+                all("shared_source_url in file" in row["warnings"] for row in report["rows"])
+            )
             self.assertIn("COMMIT complete", stdout.getvalue())
         finally:
             if os.path.exists(path):

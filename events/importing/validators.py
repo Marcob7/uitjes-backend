@@ -66,6 +66,7 @@ class CityContentValidator:
             for record in records
             if record.title and record.address
         )
+        source_url_counts = Counter(record.source_url for record in records if record.source_url)
 
         rows = []
         for record in records:
@@ -74,6 +75,7 @@ class CityContentValidator:
                 slug_counts=slug_counts,
                 name_city_counts=name_city_counts,
                 name_address_counts=name_address_counts,
+                source_url_counts=source_url_counts,
             )
             result.warnings.extend(column_warnings)
             rows.append(result)
@@ -104,7 +106,7 @@ class CityContentValidator:
             warnings.append(f"missing expected columns: {', '.join(sorted(set(missing)))}")
         return warnings
 
-    def _validate_record(self, record, slug_counts, name_city_counts, name_address_counts):
+    def _validate_record(self, record, slug_counts, name_city_counts, name_address_counts, source_url_counts):
         errors = []
         warnings = []
         missing_fields = []
@@ -155,6 +157,8 @@ class CityContentValidator:
             warnings.append("duplicate name + city in file")
         if record.title and record.address and name_address_counts[(record.title.casefold(), record.address.casefold())] > 1:
             warnings.append("duplicate name + address in file")
+        if record.source_url and source_url_counts[record.source_url] > 1:
+            warnings.append("shared_source_url in file")
 
         if not record.category:
             warnings.append("unknown or empty category")
@@ -259,15 +263,17 @@ class CityContentValidator:
         return bool(normalize_text(value))
 
     def _find_database_duplicates(self, record):
-        if not record.title:
-            return []
-
-        query = Q(city__slug=self.city_slug, title__iexact=record.title)
-        if record.address:
+        query = Q()
+        if record.slug and record.kind:
+            query |= Q(city__slug=self.city_slug, slug=record.slug, kind=record.kind)
+        if record.title:
+            query |= Q(city__slug=self.city_slug, title__iexact=record.title)
+        if record.title and record.address:
             query |= Q(city__slug=self.city_slug, title__iexact=record.title, address__iexact=record.address)
             query |= Q(city__slug=self.city_slug, title__iexact=record.title, venue__address__iexact=record.address)
-        if record.source_url:
-            query |= Q(source_url=record.source_url)
+
+        if not query:
+            return []
 
         return list(Event.objects.filter(query).values_list("id", flat=True)[:10])
 

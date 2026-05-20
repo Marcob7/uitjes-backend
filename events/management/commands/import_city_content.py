@@ -235,10 +235,7 @@ class Command(BaseCommand):
         }
 
     def _find_duplicate(self, city, record):
-        query = Q(city=city, slug=record.slug, kind=record.kind)
-        if record.source_url:
-            query |= Q(source_url=record.source_url)
-        return Event.objects.filter(query).first()
+        return Event.objects.filter(city=city, slug=record.slug, kind=record.kind).first()
 
     def _file_duplicate_key(self, city_slug, record):
         return (
