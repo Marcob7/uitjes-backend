@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Category, City, Event, Favorite, Feedback, Tag
+from .models import Category, City, Event, Favorite, Feedback, NewsletterSignup, Tag
 
 
 class CitySerializer(serializers.ModelSerializer):
@@ -276,6 +276,75 @@ class FeedbackSerializer(serializers.ModelSerializer):
         model = Feedback
         fields = ["id", "message", "email", "page_url", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+
+class NewsletterSignupSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=True, allow_blank=False)
+    preferred_city = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    city = serializers.CharField(
+        source="preferred_city",
+        required=False,
+        allow_blank=True,
+        max_length=120,
+    )
+    frequency = serializers.ChoiceField(
+        choices=NewsletterSignup.Frequency.choices,
+        required=False,
+    )
+    interests = serializers.ListField(
+        child=serializers.ChoiceField(
+            choices=[(value, value) for value in sorted(NewsletterSignup.INTEREST_CHOICES)]
+        ),
+        required=False,
+        allow_empty=True,
+    )
+    source = serializers.CharField(required=False, allow_blank=True, max_length=80)
+
+    class Meta:
+        model = NewsletterSignup
+        fields = [
+            "id",
+            "email",
+            "preferred_city",
+            "city",
+            "frequency",
+            "interests",
+            "source",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "confirmed_at",
+            "unsubscribed_at",
+        ]
+        read_only_fields = [
+            "id",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "confirmed_at",
+            "unsubscribed_at",
+        ]
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+    def validate(self, attrs):
+        preferred_city = attrs.get("preferred_city")
+        if isinstance(preferred_city, str):
+            attrs["preferred_city"] = preferred_city.strip()
+        return attrs
+
+    def validate_city(self, value):
+        return value.strip()
+
+    def validate_preferred_city(self, value):
+        return value.strip()
+
+    def validate_source(self, value):
+        return value.strip()
+
+    def validate_interests(self, value):
+        return list(dict.fromkeys(value))
 
 
 class FavoriteSerializer(serializers.ModelSerializer):

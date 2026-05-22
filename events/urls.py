@@ -17,6 +17,7 @@ from .views import (
   feedback_create,
   health,
   me,
+  newsletter_signup_create,
   tags_list,
 )
 
@@ -40,6 +41,9 @@ urlpatterns = [
 
   # Feedback (mag public)
   path("feedback/", feedback_create),
+
+  # Newsletter signup (publiek, opslag-only)
+  path("newsletter/signup/", newsletter_signup_create),
 
   # Favorites (alleen ingelogd)
   path("favorites/", favorites_list),

@@ -5,6 +5,7 @@ import time as pytime
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import IntegrityError, transaction
 from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -16,7 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Category, City, Event, Favorite, Feedback, Tag
+from .models import Category, City, Event, Favorite, Feedback, NewsletterSignup, Tag
 from .serializers import (
     CategorySerializer,
     CityContentSerializer,
@@ -25,6 +26,7 @@ from .serializers import (
     FavoriteSerializer,
     FeedbackSerializer,
     TagSerializer,
+    NewsletterSignupSerializer,
 )
 
 
@@ -677,6 +679,117 @@ def feedback_create(request):
     return Response(
         FeedbackSerializer(feedback).data,
         status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def newsletter_signup_create(request):
+    ip = get_client_ip(request)
+    ip_h = hash_ip(ip)
+    max_hits = getattr(settings, "NEWSLETTER_RATE_LIMIT_MAX", 5)
+    window = getattr(settings, "NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS", 600)
+    key = f"newsletter:rl:{ip_h}"
+    current = cache.get(key, 0)
+
+    if current >= max_hits:
+        return Response(
+            {
+                "ok": False,
+                "message": "Je hebt te vaak geprobeerd je aan te melden. Probeer het later opnieuw.",
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    if current == 0:
+        cache.set(key, 1, timeout=window)
+    else:
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.set(key, current + 1, timeout=window)
+
+    serializer = NewsletterSignupSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {
+                "ok": False,
+                "message": "Vul een geldig e-mailadres in.",
+                "errors": serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    email = data["email"]
+    has_preferred_city = "preferred_city" in data
+    has_frequency = "frequency" in data
+    has_interests = "interests" in data
+    defaults = {
+        "preferred_city": data.get("preferred_city", ""),
+        "frequency": data.get("frequency", NewsletterSignup.Frequency.WEEKLY),
+        "interests": data.get("interests", []),
+        "source": data.get("source", ""),
+        "is_active": True,
+        "unsubscribed_at": None,
+        "ip_address": ip or None,
+        "user_agent": request.META.get("HTTP_USER_AGENT", "")[:300],
+    }
+
+    try:
+        with transaction.atomic():
+            signup, created = NewsletterSignup.objects.get_or_create(
+                email__iexact=email,
+                defaults={
+                    "email": email,
+                    **defaults,
+                },
+            )
+    except IntegrityError:
+        signup = NewsletterSignup.objects.get(email__iexact=email)
+        created = False
+
+    if not created:
+        update_fields = ["is_active", "unsubscribed_at", "updated_at"]
+        signup.is_active = True
+        signup.unsubscribed_at = None
+
+        if defaults["preferred_city"]:
+            signup.preferred_city = defaults["preferred_city"]
+            update_fields.append("preferred_city")
+        elif has_preferred_city:
+            signup.preferred_city = ""
+            update_fields.append("preferred_city")
+        if has_frequency:
+            signup.frequency = defaults["frequency"]
+            update_fields.append("frequency")
+        if has_interests:
+            signup.interests = defaults["interests"]
+            update_fields.append("interests")
+        if defaults["source"]:
+            signup.source = defaults["source"]
+            update_fields.append("source")
+        if defaults["ip_address"]:
+            signup.ip_address = defaults["ip_address"]
+            update_fields.append("ip_address")
+        if defaults["user_agent"]:
+            signup.user_agent = defaults["user_agent"]
+            update_fields.append("user_agent")
+
+        signup.save(update_fields=update_fields)
+
+    message = (
+        "Je bent aangemeld voor de nieuwsbrief."
+        if created
+        else "Je was al aangemeld voor de nieuwsbrief. We hebben je inschrijving actief gezet."
+    )
+
+    return Response(
+        {
+            "ok": True,
+            "message": message,
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
 
 

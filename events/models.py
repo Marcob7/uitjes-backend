@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.db.models.functions import Lower
 
 
 class City(models.Model):
@@ -181,6 +182,55 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"Feedback #{self.id} ({self.created_at:%Y-%m-%d})"
+
+
+class NewsletterSignup(models.Model):
+    class Frequency(models.TextChoices):
+        WEEKLY = "weekly", "Wekelijks"
+        WEEKEND = "weekend", "Alleen weekendtips"
+        MONTHLY = "monthly", "Maandelijks"
+
+    INTEREST_CHOICES = {
+        "festivals",
+        "events",
+        "food_drink",
+        "family",
+        "surprise",
+    }
+
+    email = models.EmailField()
+    preferred_city = models.CharField(max_length=120, blank=True)
+    frequency = models.CharField(
+        max_length=20,
+        choices=Frequency.choices,
+        default=Frequency.WEEKLY,
+    )
+    interests = models.JSONField(default=list, blank=True)
+    source = models.CharField(max_length=80, blank=True)
+    is_active = models.BooleanField(default=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    unsubscribed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                name="uniq_newsletter_signup_email_lower",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.email
 
 
 class Favorite(models.Model):

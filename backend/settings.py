@@ -166,6 +166,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     # Events wil je public: AllowAny is prima, en voor protected endpoints zet je per-view permissions.
     "DEFAULT_PERMISSION_CLASSES": [
@@ -254,6 +255,11 @@ FEEDBACK_RATE_LIMIT_WINDOW_SECONDS = int(
 
 FEEDBACK_MIN_SECONDS = int(os.environ.get("FEEDBACK_MIN_SECONDS", "3"))
 FEEDBACK_MAX_LINKS = int(os.environ.get("FEEDBACK_MAX_LINKS", "2"))
+
+NEWSLETTER_RATE_LIMIT_MAX = int(os.environ.get("NEWSLETTER_RATE_LIMIT_MAX", "5"))
+NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS = int(
+    os.environ.get("NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS", "600")
+)
 
 CACHES = {
     "default": {

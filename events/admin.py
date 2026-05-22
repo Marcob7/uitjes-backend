@@ -1,15 +1,55 @@
 from django.contrib import admin
 
-from .models import Category, City, Event, Feedback, Tag, Venue
+from .models import Category, City, Event, Feedback, NewsletterSignup, Tag, Venue
+
+
+class HasImageUrlFilter(admin.SimpleListFilter):
+    title = "image_url"
+    parameter_name = "has_image_url"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "Aanwezig"),
+            ("no", "Ontbreekt"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.exclude(image_url__isnull=True).exclude(image_url__exact="")
+        if self.value() == "no":
+            return queryset.filter(image_url__isnull=True) | queryset.filter(image_url__exact="")
+        return queryset
+
+
+class HasCoordinatesFilter(admin.SimpleListFilter):
+    title = "coordinaten"
+    parameter_name = "has_coordinates"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "Aanwezig"),
+            ("no", "Ontbreekt"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(latitude__isnull=False, longitude__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(latitude__isnull=True) | queryset.filter(longitude__isnull=True)
+        return queryset
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "kind", "is_active")
+    list_display = ("name", "slug", "kind", "is_active", "event_count")
     list_filter = ("kind", "is_active")
     search_fields = ("name", "slug")
     ordering = ("name",)
     prepopulated_fields = {"slug": ("name",)}
+
+    @admin.display(description="events")
+    def event_count(self, obj):
+        return obj.events.count()
 
 
 @admin.register(Tag)
@@ -23,11 +63,19 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active")
+    list_display = ("name", "slug", "is_active", "event_count", "venue_count")
     list_filter = ("is_active",)
     search_fields = ("name", "slug", "description")
     ordering = ("name",)
     prepopulated_fields = {"slug": ("name",)}
+
+    @admin.display(description="events")
+    def event_count(self, obj):
+        return obj.events.count()
+
+    @admin.display(description="venues")
+    def venue_count(self, obj):
+        return obj.venues.count()
 
 
 @admin.register(Venue)
@@ -47,6 +95,10 @@ class EventAdmin(admin.ModelAdmin):
         "kind",
         "category",
         "start_at",
+        "end_at",
+        "has_source_url",
+        "has_image_url",
+        "has_coordinates",
         "is_free",
         "is_featured",
         "is_hidden_gem",
@@ -55,26 +107,94 @@ class EventAdmin(admin.ModelAdmin):
         "city",
         "kind",
         "category",
-        "is_free",
+        ("start_at", admin.DateFieldListFilter),
+        HasImageUrlFilter,
+        HasCoordinatesFilter,
         "is_featured",
         "is_hidden_gem",
+        "is_free",
         "indoor_outdoor",
         "weather_suitability",
     )
     search_fields = (
         "title",
         "slug",
+        "city__name",
+        "city__slug",
+        "venue__name",
+        "venue__slug",
+        "address",
+        "source_url",
         "summary",
         "description",
         "date_text",
         "raw_date_text",
-        "source_url",
-        "address",
-        "venue__name",
     )
     ordering = ("city__name", "start_at", "title")
+    list_select_related = ("city", "venue", "category")
     autocomplete_fields = ("city", "venue", "category")
     filter_horizontal = ("tags",)
+    readonly_fields = ("updated_at", "source", "dedupe_key", "raw_date_text")
+    fieldsets = (
+        (
+            "Basis",
+            {
+                "fields": (
+                    "title",
+                    "slug",
+                    "kind",
+                    "city",
+                    "venue",
+                    "category",
+                    "tags",
+                    "summary",
+                    "description",
+                )
+            },
+        ),
+        (
+            "Locatie",
+            {
+                "fields": (
+                    "address",
+                    "latitude",
+                    "longitude",
+                    "indoor_outdoor",
+                    "weather_suitability",
+                )
+            },
+        ),
+        ("Datum/tijd", {"fields": ("start_at", "end_at", "date_text", "opening_hours_text")}),
+        ("Bron/links", {"fields": ("source_url", "ticket_url")}),
+        ("Media", {"fields": ("image_url",)}),
+        (
+            "Highlight/priority",
+            {"fields": ("is_featured", "is_hidden_gem", "status_override", "editor_rating")},
+        ),
+        (
+            "Prijs",
+            {"fields": ("is_free", "price_min", "price_max", "price_note")},
+        ),
+        (
+            "Import/debug",
+            {
+                "classes": ("collapse",),
+                "fields": ("source", "dedupe_key", "raw_date_text", "updated_at"),
+            },
+        ),
+    )
+
+    @admin.display(boolean=True, description="source_url")
+    def has_source_url(self, obj):
+        return bool(obj.source_url)
+
+    @admin.display(boolean=True, description="image_url")
+    def has_image_url(self, obj):
+        return bool(obj.image_url)
+
+    @admin.display(boolean=True, description="coords")
+    def has_coordinates(self, obj):
+        return obj.latitude is not None and obj.longitude is not None
 
 
 @admin.register(Feedback)
@@ -87,3 +207,36 @@ class FeedbackAdmin(admin.ModelAdmin):
     @admin.display(description="message")
     def short_message(self, obj):
         return obj.message[:60] + ("..." if len(obj.message) > 60 else "")
+
+
+@admin.register(NewsletterSignup)
+class NewsletterSignupAdmin(admin.ModelAdmin):
+    list_display = (
+        "email",
+        "preferred_city",
+        "frequency",
+        "interests",
+        "source",
+        "is_active",
+        "created_at",
+        "updated_at",
+        "confirmed_at",
+        "unsubscribed_at",
+    )
+    list_filter = (
+        "frequency",
+        "is_active",
+        "source",
+        "preferred_city",
+        "created_at",
+    )
+    search_fields = ("email", "preferred_city")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "confirmed_at",
+        "unsubscribed_at",
+        "ip_address",
+        "user_agent",
+    )
+    ordering = ("-created_at",)

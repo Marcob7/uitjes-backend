@@ -1,3 +1,250 @@
 Watching for file changes with StatReloader
-[13/May/2026 11:31:16] "GET /api/city-content/?city=harderwijk&limit=3 HTTP/1.1" 200 1737
-[13/May/2026 11:31:16,449] - Broken pipe from ('127.0.0.1', 56966)
+[22/May/2026 10:21:16] "GET /api/health/ HTTP/1.1" 200 15
+[22/May/2026 10:21:16,651] - Broken pipe from ('127.0.0.1', 53009)
+Unauthorized: /api/auth/token/
+[22/May/2026 10:21:31] "POST /api/auth/token/ HTTP/1.1" 401 62
+[22/May/2026 10:21:31,347] - Broken pipe from ('127.0.0.1', 53019)
+[22/May/2026 10:23:32] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:23:32] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:23:32] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:23:47] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:23:48] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:24:11] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:24:25] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:24:46] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:24:46] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:25:28] "GET /api/health/ HTTP/1.1" 200 15
+[22/May/2026 10:25:28,707] - Broken pipe from ('127.0.0.1', 64171)
+C:\Users\Marco\EventsPlanner\.pydeps\jwt\api_jwt.py:153: InsecureKeyLengthWarning: The HMAC key is 24 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+[22/May/2026 10:26:18] "POST /api/auth/token/ HTTP/1.1" 200 489
+C:\Users\Marco\EventsPlanner\.pydeps\jwt\api_jwt.py:371: InsecureKeyLengthWarning: The HMAC key is 24 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  decoded = self.decode_complete(
+[22/May/2026 10:26:18] "GET /api/auth/me/ HTTP/1.1" 200 137
+[22/May/2026 10:26:18] "POST /api/auth/token/refresh/ HTTP/1.1" 200 244
+[22/May/2026 10:26:18,224] - Broken pipe from ('127.0.0.1', 64199)
+[22/May/2026 10:28:33] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:28:33] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:28:34] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:28:49] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:28:49] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:29:13] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:29:26] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:29:48] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:29:48] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 10:35:08] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:35:08] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:35:09] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 10:37:46] "GET /api/me/ HTTP/1.1" 200 38
+[22/May/2026 10:37:51] "OPTIONS /api/auth/token/ HTTP/1.1" 200 0
+[22/May/2026 10:37:52] "POST /api/auth/token/ HTTP/1.1" 200 489
+[22/May/2026 10:37:52] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:37:52] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:37:56] "OPTIONS /api/me/ HTTP/1.1" 200 0
+[22/May/2026 10:37:56] "OPTIONS /api/auth/user/ HTTP/1.1" 200 0
+[22/May/2026 10:37:56] "OPTIONS /api/me/ HTTP/1.1" 200 0
+[22/May/2026 10:37:56] "OPTIONS /api/auth/user/ HTTP/1.1" 200 0
+[22/May/2026 10:37:56] "GET /api/me/ HTTP/1.1" 200 132
+[22/May/2026 10:37:56] "GET /api/auth/user/ HTTP/1.1" 200 99
+[22/May/2026 10:37:56] "GET /api/me/ HTTP/1.1" 200 132
+[22/May/2026 10:37:56] "GET /api/auth/user/ HTTP/1.1" 200 99
+[22/May/2026 10:37:56] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:37:56] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 10:40:15] "OPTIONS /api/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:15] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:15] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:15] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:40:15] "GET /api/me/ HTTP/1.1" 200 132
+[22/May/2026 10:40:15] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:40:15] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:40:15] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 10:40:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:35] "OPTIONS /api/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:40:35] "GET /api/me/ HTTP/1.1" 200 132
+[22/May/2026 10:40:35] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:40:35] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:40:35] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:40:35] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 10:43:08] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+Unauthorized: /api/auth/me/
+[22/May/2026 10:43:08] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "GET /api/auth/me/ HTTP/1.1" 401 172
+Unauthorized: /api/auth/me/
+[22/May/2026 10:43:08] "GET /api/auth/me/ HTTP/1.1" 401 172
+[22/May/2026 10:43:08] "OPTIONS /api/auth/token/refresh/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "OPTIONS /api/auth/token/refresh/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "POST /api/auth/token/refresh/ HTTP/1.1" 200 244
+[22/May/2026 10:43:08] "POST /api/auth/token/refresh/ HTTP/1.1" 200 244
+[22/May/2026 10:43:08] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:08] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:08] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:43:08] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 10:43:21] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:21] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:21] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:21] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:21] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:43:21] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 10:43:46] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:46] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 10:43:46] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:46] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 10:43:46] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 10:43:46] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 11:02:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+Unauthorized: /api/auth/me/
+[22/May/2026 11:02:35] "GET /api/auth/me/ HTTP/1.1" 401 172
+[22/May/2026 11:02:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+Unauthorized: /api/auth/me/
+[22/May/2026 11:02:35] "GET /api/auth/me/ HTTP/1.1" 401 172
+[22/May/2026 11:02:35] "OPTIONS /api/auth/token/refresh/ HTTP/1.1" 200 0
+[22/May/2026 11:02:35] "OPTIONS /api/auth/token/refresh/ HTTP/1.1" 200 0
+[22/May/2026 11:02:35] "POST /api/auth/token/refresh/ HTTP/1.1" 200 244
+[22/May/2026 11:02:35] "POST /api/auth/token/refresh/ HTTP/1.1" 200 244
+[22/May/2026 11:02:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 11:02:35] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 11:02:35] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 11:02:35] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 11:02:35] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 11:02:35] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 11:04:24] "GET /api/health/ HTTP/1.1" 200 15
+[22/May/2026 11:04:24,338] - Broken pipe from ('127.0.0.1', 51882)
+[22/May/2026 11:24:08] "OPTIONS /api/auth/token/ HTTP/1.1" 200 0
+[22/May/2026 11:24:08] "POST /api/auth/token/ HTTP/1.1" 200 489
+[22/May/2026 11:24:08] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 11:24:08] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 11:24:08] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 11:24:08] "GET /api/favorites/ HTTP/1.1" 200 2
+[22/May/2026 11:24:26] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 11:24:26] "OPTIONS /api/auth/me/ HTTP/1.1" 200 0
+[22/May/2026 11:24:26] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 11:24:26] "GET /api/auth/me/ HTTP/1.1" 200 123
+[22/May/2026 11:24:26] "OPTIONS /api/favorites/ HTTP/1.1" 200 0
+[22/May/2026 11:24:26] "GET /api/favorites/ HTTP/1.1" 200 2
+Internal Server Error: /accounts/google/login/
+Traceback (most recent call last):
+  File "C:\Users\Marco\EventsPlanner\.pydeps\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\providers\oauth2\views.py", line 102, in view
+    return self.dispatch(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\providers\base\views.py", line 15, in dispatch
+    provider = self.get_provider()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\providers\oauth2\views.py", line 111, in get_provider
+    return self.adapter.get_provider()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\providers\oauth2\views.py", line 45, in get_provider
+    return get_adapter(self.request).get_provider(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\adapter.py", line 212, in get_provider
+    app = self.get_app(request, provider=provider, client_id=client_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Marco\EventsPlanner\.pydeps\allauth\socialaccount\adapter.py", line 302, in get_app
+    raise SocialApp.DoesNotExist()
+allauth.socialaccount.models.SocialApp.DoesNotExist
+[22/May/2026 11:24:36] "GET /accounts/google/login/?process=login HTTP/1.1" 500 89990
+Not Found: /favicon.ico
+[22/May/2026 11:24:36] "GET /favicon.ico HTTP/1.1" 404 3304
+[22/May/2026 11:33:31] "GET /api/city-content/?query=vandaag HTTP/1.1" 200 82
+[22/May/2026 11:33:41] "GET /api/city-content/?query=restaurant HTTP/1.1" 200 11865
+[22/May/2026 11:33:51] "GET /api/city-content/?query=kinderen HTTP/1.1" 200 12041
+[22/May/2026 11:33:57] "GET /api/events/by-slug/aviodrome-beroepenweken/ HTTP/1.1" 200 1958
+[22/May/2026 11:40:01] "GET /api/city-content/?query=aaaaaaaaaaaaaaaaaa HTTP/1.1" 200 82
+[22/May/2026 13:40:24] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 13:40:24] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 13:40:24] "GET /api/city-content/?city=lelystad&limit=100&offset=0 HTTP/1.1" 200 65951
+[22/May/2026 13:40:24] "GET /api/city-content/?city=lelystad&limit=100&offset=100 HTTP/1.1" 200 41970
+[22/May/2026 13:40:24] "GET /api/city-content/?city=amersfoort&limit=100&offset=0 HTTP/1.1" 200 46943
+[22/May/2026 13:40:24] "GET /api/city-content/?city=amersfoort&limit=100&offset=100 HTTP/1.1" 200 43047
+[22/May/2026 13:40:25] "GET /api/events/by-slug/de-zondagse-fietstocht/ HTTP/1.1" 200 1524
+[22/May/2026 13:40:25] "GET /api/city-content/?query=museum&limit=24 HTTP/1.1" 200 11354
+[22/May/2026 13:40:25] "GET /api/city-content/?query=onzinzoektermtest&limit=24 HTTP/1.1" 200 82
+[22/May/2026 13:41:14] "GET /api/city-content/?city=harderwijk&limit=100&offset=0 HTTP/1.1" 200 59634
+[22/May/2026 13:41:14] "GET /api/city-content/?city=harderwijk&limit=100&offset=100 HTTP/1.1" 200 38559
+[22/May/2026 13:41:14] "GET /api/city-content/?city=lelystad&limit=100&offset=0 HTTP/1.1" 200 65951
+[22/May/2026 13:41:14] "GET /api/city-content/?city=lelystad&limit=100&offset=100 HTTP/1.1" 200 41970
+[22/May/2026 13:41:14] "GET /api/city-content/?city=amersfoort&limit=100&offset=0 HTTP/1.1" 200 46943
+[22/May/2026 13:41:14] "GET /api/city-content/?city=amersfoort&limit=100&offset=100 HTTP/1.1" 200 43047
+[22/May/2026 13:41:14] "GET /api/events/by-slug/de-zondagse-fietstocht/ HTTP/1.1" 200 1524
+[22/May/2026 13:41:15] "GET /api/city-content/?query=museum&limit=24 HTTP/1.1" 200 11354
+[22/May/2026 13:41:15] "GET /api/city-content/?query=onzinzoektermtest&limit=24 HTTP/1.1" 200 82
+C:\Users\Marco\EventsPlanner\backend-only\events\models.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 10:21:03
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader
+C:\Users\Marco\EventsPlanner\backend-only\events\serializers.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 13:44:02
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader
+C:\Users\Marco\EventsPlanner\backend-only\events\views.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 13:44:11
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader
+C:\Users\Marco\EventsPlanner\backend-only\events\urls.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 13:44:30
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader
+C:\Users\Marco\EventsPlanner\backend-only\events\admin.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 13:44:34
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader
+C:\Users\Marco\EventsPlanner\backend-only\backend\settings.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+May 22, 2026 - 13:44:40
+Django version 5.2.11, using settings 'backend.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CTRL-BREAK.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+Watching for file changes with StatReloader

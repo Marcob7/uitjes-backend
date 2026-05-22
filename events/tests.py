@@ -6,13 +6,14 @@ from datetime import timedelta
 from io import StringIO
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from openpyxl import Workbook
 from rest_framework.test import APIClient
 
-from .models import Category, City, Event, Favorite, Tag, Venue
+from .models import Category, City, Event, Favorite, NewsletterSignup, Tag, Venue
 
 
 class EventsApiTests(TestCase):
@@ -219,6 +220,139 @@ class EventsApiTests(TestCase):
         self.assertEqual(payload["not_discover_ready"], 0)
         self.assertEqual(payload["hidden_gem"], 1)
         self.assertEqual(payload["incomplete_records"], [])
+
+
+class NewsletterSignupApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        cache.clear()
+
+    def test_valid_signup_creates_record_without_auth(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {"email": "Tester@Example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["ok"])
+        self.assertEqual(NewsletterSignup.objects.count(), 1)
+
+        signup = NewsletterSignup.objects.get()
+        self.assertEqual(signup.email, "tester@example.com")
+        self.assertEqual(signup.frequency, NewsletterSignup.Frequency.WEEKLY)
+        self.assertEqual(signup.interests, [])
+        self.assertTrue(signup.is_active)
+
+    def test_invalid_email_returns_neat_error(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {"email": "geen-email"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("geldig e-mailadres", response.json()["message"])
+        self.assertEqual(NewsletterSignup.objects.count(), 0)
+
+    def test_empty_email_returns_neat_error(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {"email": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertEqual(NewsletterSignup.objects.count(), 0)
+
+    def test_duplicate_email_reactivates_existing_signup(self):
+        signup = NewsletterSignup.objects.create(
+            email="tester@example.com",
+            preferred_city="Zwolle",
+            source="footer",
+            frequency=NewsletterSignup.Frequency.MONTHLY,
+            interests=["family"],
+            is_active=False,
+            unsubscribed_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {
+                "email": "TESTER@example.com",
+                "city": "Apeldoorn",
+                "frequency": "weekend",
+                "interests": ["festivals", "food_drink"],
+                "source": "homepage",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        self.assertIn("al aangemeld", response.json()["message"])
+        self.assertEqual(NewsletterSignup.objects.count(), 1)
+
+        signup.refresh_from_db()
+        self.assertEqual(signup.email, "tester@example.com")
+        self.assertEqual(signup.preferred_city, "Apeldoorn")
+        self.assertEqual(signup.frequency, NewsletterSignup.Frequency.WEEKEND)
+        self.assertEqual(signup.interests, ["festivals", "food_drink"])
+        self.assertEqual(signup.source, "homepage")
+        self.assertTrue(signup.is_active)
+        self.assertIsNone(signup.unsubscribed_at)
+
+    def test_optional_city_source_and_preferences_are_stored(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {
+                "email": "stad@example.com",
+                "preferred_city": "Harderwijk",
+                "frequency": "monthly",
+                "interests": ["events", "family", "events"],
+                "source": "inspiration",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        signup = NewsletterSignup.objects.get(email="stad@example.com")
+        self.assertEqual(signup.preferred_city, "Harderwijk")
+        self.assertEqual(signup.frequency, NewsletterSignup.Frequency.MONTHLY)
+        self.assertEqual(signup.interests, ["events", "family"])
+        self.assertEqual(signup.source, "inspiration")
+
+    def test_invalid_frequency_returns_neat_error(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {
+                "email": "stad@example.com",
+                "frequency": "daily",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("frequency", response.json()["errors"])
+        self.assertEqual(NewsletterSignup.objects.count(), 0)
+
+    def test_invalid_interest_returns_neat_error(self):
+        response = self.client.post(
+            "/api/newsletter/signup/",
+            {
+                "email": "stad@example.com",
+                "interests": ["festivals", "unknown"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("interests", response.json()["errors"])
+        self.assertEqual(NewsletterSignup.objects.count(), 0)
 
 
 class CityContentApiTests(TestCase):
@@ -453,6 +587,112 @@ class FavoritesCompatibilityTests(TestCase):
         events_response = self.client.get("/api/favorites/events/")
         self.assertEqual(events_response.status_code, 200)
         self.assertEqual(events_response.json()[0]["id"], self.event.id)
+
+
+class JwtAuthApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user(
+            username="jwt-user",
+            email="jwt-user@example.com",
+            password="correct-password-123",
+            first_name="Jwt",
+            last_name="Tester",
+        )
+
+    def test_valid_login_with_username_returns_tokens(self):
+        response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwt-user",
+                "password": "correct-password-123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("access", payload)
+        self.assertIn("refresh", payload)
+
+    def test_valid_login_with_email_returns_tokens(self):
+        response = self.client.post(
+            "/api/auth/token/",
+            {
+                "email": "jwt-user@example.com",
+                "password": "correct-password-123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
+
+    def test_invalid_login_fails_cleanly(self):
+        response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwt-user",
+                "password": "wrong-password",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("detail", response.json())
+
+    def test_refresh_endpoint_returns_new_access_token(self):
+        login_response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwt-user",
+                "password": "correct-password-123",
+            },
+            format="json",
+        )
+        refresh = login_response.json()["refresh"]
+
+        response = self.client.post(
+            "/api/auth/token/refresh/",
+            {"refresh": refresh},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.json())
+
+    def test_auth_me_without_token_fails_cleanly(self):
+        response = self.client.get("/api/auth/me/")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("detail", response.json())
+
+    def test_auth_me_with_valid_jwt_returns_user(self):
+        login_response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwt-user",
+                "password": "correct-password-123",
+            },
+            format="json",
+        )
+        access = login_response.json()["access"]
+
+        response = self.client.get(
+            "/api/auth/me/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "id": self.user.id,
+            "username": "jwt-user",
+            "email": "jwt-user@example.com",
+            "first_name": "Jwt",
+            "last_name": "Tester",
+            "is_authenticated": True,
+        })
 
 
 class ImportCommandTests(TestCase):
