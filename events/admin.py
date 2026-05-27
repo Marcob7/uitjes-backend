@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, City, Event, Feedback, NewsletterSignup, Tag, Venue
+from .models import Category, City, Event, Favorite, Feedback, NewsletterSignup, Tag, Venue
 
 
 class HasImageUrlFilter(admin.SimpleListFilter):
@@ -195,6 +195,29 @@ class EventAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="coords")
     def has_coordinates(self, obj):
         return obj.latitude is not None and obj.longitude is not None
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    list_display = ("user", "event_title", "city", "created_at")
+    search_fields = (
+        "user__username",
+        "user__email",
+        "event__title",
+        "event__slug",
+    )
+    list_filter = ("event__city", "created_at")
+    ordering = ("-created_at",)
+    list_select_related = ("user", "event", "event__city")
+    autocomplete_fields = ("user", "event")
+
+    @admin.display(description="event")
+    def event_title(self, obj):
+        return obj.event.title
+
+    @admin.display(description="city")
+    def city(self, obj):
+        return obj.event.city
 
 
 @admin.register(Feedback)

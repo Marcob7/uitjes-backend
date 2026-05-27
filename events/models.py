@@ -234,12 +234,22 @@ class NewsletterSignup(models.Model):
 
 
 class Favorite(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    event = models.ForeignKey("Event", on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favorites",
+    )
+    event = models.ForeignKey(
+        "Event",
+        on_delete=models.CASCADE,
+        related_name="favorites",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("user", "event")
+        constraints = [
+            models.UniqueConstraint(fields=["user", "event"], name="uniq_favorite_user_event"),
+        ]
         indexes = [models.Index(fields=["user", "created_at"])]
 
     def __str__(self):

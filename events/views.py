@@ -793,31 +793,48 @@ def newsletter_signup_create(request):
     )
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def favorites_list(request):
-    qs = Favorite.objects.filter(user=request.user).order_by("-created_at")
+    if request.method == "POST":
+        return create_favorite_response(request)
+
+    qs = (
+        Favorite.objects
+        .filter(user=request.user)
+        .select_related("event", "event__city", "event__category")
+        .order_by("-created_at")
+    )
     data = FavoriteSerializer(qs, many=True).data
     return Response(data)
+
+
+def create_favorite_response(request):
+    event_id = request.data.get("event_id")
+    if not event_id:
+        return Response({"detail": "event_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        event_id = int(event_id)
+    except (TypeError, ValueError):
+        return Response({"detail": "event_id must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return Response({"detail": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    fav, created = Favorite.objects.get_or_create(user=request.user, event=event)
+    return Response(
+        FavoriteSerializer(fav).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def favorites_add(request):
-    event_id = request.data.get("event_id")
-    if not event_id:
-        return Response({"detail": "event_id is required"}, status=400)
-
-    try:
-        event = Event.objects.get(id=event_id)
-    except Event.DoesNotExist:
-        return Response({"detail": "Event not found"}, status=404)
-
-    fav, created = Favorite.objects.get_or_create(user=request.user, event=event)
-    return Response(
-        {"event_id": event.id, "created": created},
-        status=201 if created else 200,
-    )
+    return create_favorite_response(request)
 
 
 @api_view(["DELETE"])

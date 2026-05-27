@@ -4,11 +4,12 @@ import os
 import tempfile
 from datetime import timedelta
 from io import StringIO
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.core.management import call_command
-from django.test import TestCase
+from django.core.management import CommandError, call_command
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from openpyxl import Workbook
 from rest_framework.test import APIClient
@@ -355,6 +356,416 @@ class NewsletterSignupApiTests(TestCase):
         self.assertEqual(NewsletterSignup.objects.count(), 0)
 
 
+class FestivalNewsletterTestMailCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Apeldoorn", slug="apeldoorn")
+        self.category, _ = Category.objects.get_or_create(
+            slug="festival",
+            defaults={
+                "name": "Festival",
+                "kind": Event.Kind.FESTIVAL,
+            },
+        )
+        self.venue = Venue.objects.create(
+            name="Stadspark",
+            city=self.city,
+            address="Parklaan 1",
+        )
+
+    def test_command_requires_explicit_to_address(self):
+        with self.assertRaises(CommandError):
+            call_command("send_festival_newsletter_test")
+
+    def test_command_with_to_uses_console_backend_and_outputs_mail(self):
+        Event.objects.create(
+            title="Apeldoorn Zomerfestival",
+            slug="apeldoorn-zomerfestival",
+            kind=Event.Kind.FESTIVAL,
+            city=self.city,
+            venue=self.venue,
+            category=self.category,
+            summary="Muziek, eten en cultuur in het stadspark.",
+            date_text="12 juli 2026",
+            ticket_url="https://example.com/tickets",
+        )
+        out = StringIO()
+
+        call_command(
+            "send_festival_newsletter_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("Subject: Festival tips voor je volgende uitje", output)
+        self.assertIn("To: test@example.com", output)
+        self.assertIn("Apeldoorn Zomerfestival", output)
+        self.assertIn("12 juli 2026", output)
+        self.assertIn("Stadspark, Apeldoorn", output)
+        self.assertIn("https://example.com/tickets", output)
+        self.assertIn("django.core.mail.backends.console.EmailBackend", output)
+
+    def test_command_does_not_send_to_newsletter_signups(self):
+        NewsletterSignup.objects.create(email="subscriber@example.com")
+        out = StringIO()
+
+        call_command(
+            "send_festival_newsletter_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("To: test@example.com", output)
+        self.assertNotIn("subscriber@example.com", output)
+
+    def test_command_fallback_body_has_no_placeholder_values(self):
+        out = StringIO()
+
+        call_command(
+            "send_festival_newsletter_test",
+            to_email="test@example.com",
+            limit=3,
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("fallback-testdata", output)
+        self.assertIn("Dekmantel Festival", output)
+        for placeholder in ("undefined", "null", "nan"):
+            self.assertNotIn(placeholder, output.lower())
+
+
+class EventsNewsletterTestMailCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Apeldoorn", slug="apeldoorn")
+        self.category, _ = Category.objects.get_or_create(
+            slug="muziek-events",
+            defaults={
+                "name": "Muziek",
+                "kind": Event.Kind.EVENT,
+            },
+        )
+        self.venue = Venue.objects.create(
+            name="Gigant",
+            city=self.city,
+            address="Nieuwstraat 1",
+        )
+
+    def test_command_requires_explicit_to_address(self):
+        with self.assertRaises(CommandError):
+            call_command("send_events_newsletter_test")
+
+    def test_command_with_to_uses_console_backend_and_outputs_event_mail(self):
+        Event.objects.create(
+            title="Live muziek in Gigant",
+            slug="live-muziek-in-gigant",
+            kind=Event.Kind.EVENT,
+            city=self.city,
+            venue=self.venue,
+            category=self.category,
+            summary="Een avond met lokale bands.",
+            date_text="14 juni 2026",
+            source_url="https://example.com/live-muziek",
+        )
+        out = StringIO()
+
+        call_command(
+            "send_events_newsletter_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("Subject: Evenemententips voor je volgende uitje", output)
+        self.assertIn("To: test@example.com", output)
+        self.assertIn("Live muziek in Gigant", output)
+        self.assertIn("14 juni 2026", output)
+        self.assertIn("Gigant, Apeldoorn", output)
+        self.assertIn("Een avond met lokale bands.", output)
+        self.assertIn("https://example.com/live-muziek", output)
+        self.assertIn("django.core.mail.backends.console.EmailBackend", output)
+
+    def test_command_does_not_send_to_newsletter_signups(self):
+        NewsletterSignup.objects.create(email="subscriber@example.com")
+        out = StringIO()
+
+        call_command(
+            "send_events_newsletter_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("To: test@example.com", output)
+        self.assertNotIn("subscriber@example.com", output)
+
+    def test_command_does_not_use_food_drink_as_event_newsletter_content(self):
+        Event.objects.create(
+            title="Lunch aan de haven",
+            slug="lunch-aan-de-haven",
+            kind=Event.Kind.FOOD_DRINK,
+            city=self.city,
+            summary="Restaurant met terras.",
+            date_text="Elke dag",
+        )
+        out = StringIO()
+
+        call_command(
+            "send_events_newsletter_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertNotIn("Lunch aan de haven", output)
+        self.assertIn("fallback-testdata", output)
+
+    def test_command_body_has_no_placeholder_values(self):
+        Event.objects.create(
+            title="undefined",
+            slug="placeholder-event",
+            kind=Event.Kind.EVENT,
+            city=self.city,
+            summary="null",
+            description="nan",
+            date_text="n/a",
+            raw_date_text="none",
+            ticket_url="undefined",
+            source_url="nan",
+        )
+        out = StringIO()
+
+        call_command(
+            "send_events_newsletter_test",
+            to_email="test@example.com",
+            limit=1,
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("Evenemententip", output)
+        for placeholder in ("undefined", "null", "nan"):
+            self.assertNotIn(placeholder, output.lower())
+
+
+class FestivalNewsletterRealTestMailCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Apeldoorn", slug="apeldoorn")
+        self.category, _ = Category.objects.get_or_create(
+            slug="festival-real",
+            defaults={
+                "name": "Festival",
+                "kind": Event.Kind.FESTIVAL,
+            },
+        )
+        self.venue = Venue.objects.create(
+            name="Stadspark",
+            city=self.city,
+            address="Parklaan 1",
+        )
+
+    def test_command_requires_explicit_to_address(self):
+        with self.assertRaises(CommandError):
+            call_command("send_festival_newsletter_real_test")
+
+    @override_settings(RESEND_API_KEY="")
+    def test_missing_resend_api_key_returns_neat_error(self):
+        with self.assertRaisesMessage(CommandError, "RESEND_API_KEY ontbreekt"):
+            call_command(
+                "send_festival_newsletter_real_test",
+                to_email="test@example.com",
+            )
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="",
+        DEFAULT_FROM_EMAIL="",
+    )
+    def test_missing_from_email_returns_neat_error(self):
+        with self.assertRaisesMessage(CommandError, "RESEND_FROM_EMAIL of DEFAULT_FROM_EMAIL ontbreekt"):
+            call_command(
+                "send_festival_newsletter_real_test",
+                to_email="test@example.com",
+            )
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="Uitjes <newsletter@example.com>",
+    )
+    @patch("events.mailers.import_module")
+    def test_success_path_sends_one_explicit_resend_email(self, import_module_mock):
+        Event.objects.create(
+            title="Apeldoorn Zomerfestival",
+            slug="apeldoorn-zomerfestival-real",
+            kind=Event.Kind.FESTIVAL,
+            city=self.city,
+            venue=self.venue,
+            category=self.category,
+            summary="Muziek, eten en cultuur in het stadspark.",
+            date_text="12 juli 2026",
+            ticket_url="https://example.com/tickets",
+        )
+        NewsletterSignup.objects.create(email="subscriber@example.com")
+        resend = Mock()
+        resend.Emails.send.return_value = {"id": "email_123"}
+        import_module_mock.return_value = resend
+        out = StringIO()
+
+        call_command(
+            "send_festival_newsletter_real_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        params = resend.Emails.send.call_args.args[0]
+        self.assertEqual(params["from"], "Uitjes <newsletter@example.com>")
+        self.assertEqual(params["to"], ["test@example.com"])
+        self.assertEqual(params["subject"], "Festival tips voor je volgende uitje")
+        self.assertIn("Apeldoorn Zomerfestival", params["text"])
+        self.assertIn("12 juli 2026", params["text"])
+        self.assertIn("Muziek, eten en cultuur", params["text"])
+        self.assertIn("[TESTMAIL - VERZONDEN VIA RESEND]", params["text"])
+        self.assertIn("echte testmail, verzonden via Resend", params["text"])
+        self.assertIn(
+            "Er is nog geen bulkverzending naar nieuwsbriefinschrijvers actief.",
+            params["text"],
+        )
+        self.assertNotIn("[LOKALE TESTMAIL - GEEN ECHTE VERZENDING]", params["text"])
+        self.assertNotIn("Er is nog geen echte mailprovider gekoppeld", params["text"])
+        self.assertNotIn("subscriber@example.com", str(params))
+        for placeholder in ("undefined", "null", "nan"):
+            self.assertNotIn(placeholder, params["text"].lower())
+        self.assertIn("via Resend", out.getvalue())
+        self.assertIn("Ontvangers: 1", out.getvalue())
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="Uitjes <newsletter@example.com>",
+    )
+    @patch("events.mailers.import_module")
+    def test_provider_failure_returns_neat_error(self, import_module_mock):
+        resend = Mock()
+        resend.Emails.send.side_effect = RuntimeError("provider offline")
+        import_module_mock.return_value = resend
+
+        with self.assertRaisesMessage(CommandError, "Resend kon de testmail niet versturen"):
+            call_command(
+                "send_festival_newsletter_real_test",
+                to_email="test@example.com",
+            )
+
+
+class EventsNewsletterRealTestMailCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Apeldoorn", slug="apeldoorn")
+        self.category, _ = Category.objects.get_or_create(
+            slug="muziek-events-real",
+            defaults={
+                "name": "Muziek",
+                "kind": Event.Kind.EVENT,
+            },
+        )
+        self.venue = Venue.objects.create(
+            name="Gigant",
+            city=self.city,
+            address="Nieuwstraat 1",
+        )
+
+    def test_command_requires_explicit_to_address(self):
+        with self.assertRaises(CommandError):
+            call_command("send_events_newsletter_real_test")
+
+    @override_settings(RESEND_API_KEY="")
+    def test_missing_resend_api_key_returns_neat_error(self):
+        with self.assertRaisesMessage(CommandError, "RESEND_API_KEY ontbreekt"):
+            call_command(
+                "send_events_newsletter_real_test",
+                to_email="test@example.com",
+            )
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="",
+        DEFAULT_FROM_EMAIL="",
+    )
+    def test_missing_from_email_returns_neat_error(self):
+        with self.assertRaisesMessage(CommandError, "RESEND_FROM_EMAIL of DEFAULT_FROM_EMAIL ontbreekt"):
+            call_command(
+                "send_events_newsletter_real_test",
+                to_email="test@example.com",
+            )
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="",
+        DEFAULT_FROM_EMAIL="Uitjes <default@example.com>",
+    )
+    @patch("events.mailers.import_module")
+    def test_uses_default_from_email_when_resend_from_email_is_empty(self, import_module_mock):
+        resend = Mock()
+        resend.Emails.send.return_value = {"id": "email_default"}
+        import_module_mock.return_value = resend
+
+        call_command(
+            "send_events_newsletter_real_test",
+            to_email="test@example.com",
+        )
+
+        params = resend.Emails.send.call_args.args[0]
+        self.assertEqual(params["from"], "Uitjes <default@example.com>")
+
+    @override_settings(
+        RESEND_API_KEY="re_test",
+        RESEND_FROM_EMAIL="Uitjes <newsletter@example.com>",
+    )
+    @patch("events.mailers.import_module")
+    def test_success_path_sends_one_explicit_resend_email(self, import_module_mock):
+        Event.objects.create(
+            title="Live muziek in Gigant",
+            slug="live-muziek-in-gigant-real",
+            kind=Event.Kind.EVENT,
+            city=self.city,
+            venue=self.venue,
+            category=self.category,
+            summary="Een avond met lokale bands.",
+            date_text="14 juni 2026",
+            source_url="https://example.com/live-muziek",
+        )
+        NewsletterSignup.objects.create(email="subscriber@example.com")
+        resend = Mock()
+        resend.Emails.send.return_value = {"id": "email_456"}
+        import_module_mock.return_value = resend
+        out = StringIO()
+
+        call_command(
+            "send_events_newsletter_real_test",
+            to_email="test@example.com",
+            stdout=out,
+        )
+
+        params = resend.Emails.send.call_args.args[0]
+        self.assertEqual(params["from"], "Uitjes <newsletter@example.com>")
+        self.assertEqual(params["to"], ["test@example.com"])
+        self.assertEqual(params["subject"], "Evenemententips voor je volgende uitje")
+        self.assertIn("Live muziek in Gigant", params["text"])
+        self.assertIn("14 juni 2026", params["text"])
+        self.assertIn("Een avond met lokale bands.", params["text"])
+        self.assertIn("[TESTMAIL - VERZONDEN VIA RESEND]", params["text"])
+        self.assertIn("echte testmail, verzonden via Resend", params["text"])
+        self.assertIn(
+            "Er is nog geen bulkverzending naar nieuwsbriefinschrijvers actief.",
+            params["text"],
+        )
+        self.assertNotIn("[LOKALE TESTMAIL - GEEN ECHTE VERZENDING]", params["text"])
+        self.assertNotIn("Er is nog geen echte mailprovider gekoppeld", params["text"])
+        self.assertNotIn("subscriber@example.com", str(params))
+        for placeholder in ("undefined", "null", "nan"):
+            self.assertNotIn(placeholder, params["text"].lower())
+        self.assertIn("via Resend", out.getvalue())
+        self.assertIn("Ontvangers: 1", out.getvalue())
+
+
 class CityContentApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -561,28 +972,145 @@ class CityContentApiTests(TestCase):
         self.assertNotIn('"nan"', json.dumps(response.json()).lower())
 
 
-class FavoritesCompatibilityTests(TestCase):
+class FavoritesApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = get_user_model().objects.create_user(
             username="tester",
+            email="tester@example.com",
+            password="secret123",
+        )
+        self.other_user = get_user_model().objects.create_user(
+            username="other",
+            email="other@example.com",
             password="secret123",
         )
         self.city = City.objects.create(name="Deventer", slug="deventer")
+        self.category, _ = Category.objects.get_or_create(
+            slug="festival",
+            defaults={
+                "name": "Festival",
+                "kind": Event.Kind.FESTIVAL,
+            },
+        )
         self.event = Event.objects.create(
             title="Food Festival Deventer",
             slug="food-festival-deventer",
             city=self.city,
+            category=self.category,
+            summary="Lekker eten aan de IJssel.",
+            image_url="https://example.com/food.jpg",
             kind=Event.Kind.FESTIVAL,
         )
+        self.other_event = Event.objects.create(
+            title="Andere wandeling",
+            slug="andere-wandeling",
+            city=self.city,
+            kind=Event.Kind.ACTIVITY,
+        )
+
+    def test_unauthenticated_user_cannot_read_favorites(self):
+        response = self.client.get("/api/favorites/")
+
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_authenticated_user_can_add_favorite(self):
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Favorite.objects.count(), 1)
+        payload = response.json()
+        self.assertEqual(payload["event_id"], self.event.id)
+        self.assertEqual(payload["title"], self.event.title)
+        self.assertEqual(payload["slug"], self.event.slug)
+        self.assertEqual(payload["city"], self.city.slug)
+        self.assertEqual(payload["kind"], Event.Kind.FESTIVAL)
+        self.assertEqual(payload["category"], self.category.name)
+        self.assertEqual(payload["summary"], self.event.summary)
+        self.assertEqual(payload["image_url"], self.event.image_url)
+
+    def test_duplicate_favorite_does_not_create_duplicate_record(self):
+        self.client.force_authenticate(self.user)
+
+        first_response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+        )
+        second_response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(Favorite.objects.filter(user=self.user, event=self.event).count(), 1)
+
+    def test_authenticated_user_can_remove_favorite_without_deleting_event(self):
+        self.client.force_authenticate(self.user)
         Favorite.objects.create(user=self.user, event=self.event)
 
-    def test_favorites_endpoints_still_work(self):
+        response = self.client.delete(f"/api/favorites/{self.event.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Favorite.objects.filter(user=self.user, event=self.event).exists())
+        self.assertTrue(Event.objects.filter(id=self.event.id).exists())
+
+    def test_user_only_sees_own_favorites(self):
+        Favorite.objects.create(user=self.user, event=self.event)
+        Favorite.objects.create(user=self.other_user, event=self.other_event)
         self.client.force_authenticate(self.user)
 
         list_response = self.client.get("/api/favorites/")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual([item["event_id"] for item in list_response.json()], [self.event.id])
+
+    def test_user_cannot_remove_other_users_favorite(self):
+        Favorite.objects.create(user=self.other_user, event=self.event)
+        self.client.force_authenticate(self.user)
+
+        response = self.client.delete(f"/api/favorites/{self.event.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertTrue(Favorite.objects.filter(user=self.other_user, event=self.event).exists())
+
+    def test_jwt_authentication_works_with_favorites_endpoints(self):
+        login_response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "tester",
+                "password": "secret123",
+            },
+            format="json",
+        )
+        access = login_response.json()["access"]
+
+        add_response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        list_response = self.client.get(
+            "/api/favorites/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(add_response.status_code, 201)
         self.assertEqual(list_response.status_code, 200)
         self.assertEqual(list_response.json()[0]["event_id"], self.event.id)
+
+    def test_compatibility_favorites_events_endpoint_still_returns_events(self):
+        Favorite.objects.create(user=self.user, event=self.event)
+        self.client.force_authenticate(self.user)
 
         events_response = self.client.get("/api/favorites/events/")
         self.assertEqual(events_response.status_code, 200)
@@ -1161,6 +1689,58 @@ class CityContentImportCommandTests(TestCase):
         workbook.save(temp_file.name)
         return temp_file.name
 
+    def _create_city_content_excel_file_with_blank_ticket_url(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Master template"
+        sheet.append([
+            "City",
+            "Naam/Activiteit",
+            "Slug",
+            "Kind",
+            "Category",
+            "DatumRaw",
+            "Venue",
+            "Address",
+            "Latitude",
+            "Longitude",
+            "Summary",
+            "Omschrijving",
+            "SourceUrl",
+            "TicketUrl",
+            "ImageUrl",
+            "PriceNote",
+            "IndoorOutdoor",
+            "WeatherSuitability",
+            "LastCheckedAt",
+        ])
+        sheet.append([
+            "harderwijk",
+            "Ticketloze stadswandeling",
+            "ticketloze-stadswandeling",
+            "activity",
+            "Cultuur",
+            "1 januari 2026",
+            "Binnenstad",
+            "Markt 1",
+            "52.350000",
+            "5.620000",
+            "Een compacte stadswandeling.",
+            "Een volledige beschrijving van de stadswandeling door Harderwijk.",
+            "https://example.com/ticketloze-stadswandeling",
+            "",
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+        ])
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_file.close()
+        workbook.save(temp_file.name)
+        return temp_file.name
+
     def test_city_content_dry_run_does_not_write_database(self):
         path = self._create_city_content_excel_file()
         before_counts = {
@@ -1278,6 +1858,27 @@ class CityContentImportCommandTests(TestCase):
                 all("shared_source_url in file" in row["warnings"] for row in report["rows"])
             )
             self.assertIn("COMMIT complete", stdout.getvalue())
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_does_not_store_blank_ticket_url_as_nan(self):
+        path = self._create_city_content_excel_file_with_blank_ticket_url()
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                no_report_file=True,
+                stdout=stdout,
+            )
+
+            imported = Event.objects.get(slug="ticketloze-stadswandeling")
+            self.assertIsNone(imported.ticket_url)
         finally:
             if os.path.exists(path):
                 os.unlink(path)

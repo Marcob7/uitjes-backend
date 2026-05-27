@@ -349,7 +349,30 @@ class NewsletterSignupSerializer(serializers.ModelSerializer):
 
 class FavoriteSerializer(serializers.ModelSerializer):
     event_id = serializers.IntegerField(source="event.id", read_only=True)
+    title = serializers.CharField(source="event.title", read_only=True)
+    slug = serializers.CharField(source="event.slug", read_only=True)
+    city = serializers.CharField(source="event.city.slug", read_only=True)
+    kind = serializers.CharField(source="event.kind", read_only=True)
+    category = serializers.SerializerMethodField()
+    summary = serializers.CharField(source="event.summary", read_only=True)
+    image_url = serializers.URLField(source="event.image_url", read_only=True)
+
+    def get_category(self, obj):
+        if obj.event.category_id:
+            return obj.event.category.name
+        return None
 
     class Meta:
         model = Favorite
-        fields = ["id", "event_id", "created_at"]
+        fields = [
+            "id",
+            "event_id",
+            "title",
+            "slug",
+            "city",
+            "kind",
+            "category",
+            "summary",
+            "image_url",
+            "created_at",
+        ]

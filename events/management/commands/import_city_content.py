@@ -325,7 +325,12 @@ class Command(BaseCommand):
         value = record.raw.get(column)
         if value is None:
             return ""
-        return str(value).strip()
+        if value != value:
+            return ""
+        text = str(value).strip()
+        if text.casefold() in {"nan", "none", "null"}:
+            return ""
+        return text
 
     def _parse_bool(self, value):
         normalized = (value or "").strip().casefold()

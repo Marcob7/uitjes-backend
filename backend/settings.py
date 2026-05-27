@@ -57,6 +57,11 @@ INSTALLED_APPS = [
 
 SITE_ID = 1
 
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
 MIDDLEWARE = [
     # CORS moet helemaal bovenaan, vóór CommonMiddleware
     "corsheaders.middleware.CorsMiddleware",
@@ -87,8 +92,12 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # Render draait achter een proxy (Cloudflare/Render). Hiermee snapt Django dat requests "https" zijn.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
-# Allauth gebruikt dit om de juiste https callback/redirect urls te bouwen
-ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
+# Allauth gebruikt dit om callback/redirect urls te bouwen.
+# Render blijft standaard https; lokaal DEBUG gebruikt http tenzij expliciet overschreven.
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = os.environ.get(
+    "ACCOUNT_DEFAULT_HTTP_PROTOCOL",
+    "http" if DEBUG else "https",
+)
 
 # (optioneel, maar vaak handig)
 SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() == "true"
@@ -267,3 +276,16 @@ CACHES = {
         "LOCATION": "feedback-rate-limit",
     }
 }
+
+# =========================
+# Email / newsletter test sends
+# =========================
+# Local console test commands can still override this with Django's console backend.
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "console").strip().lower()
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "").strip()
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", DEFAULT_FROM_EMAIL).strip()
