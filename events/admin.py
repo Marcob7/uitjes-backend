@@ -169,7 +169,20 @@ class EventAdmin(admin.ModelAdmin):
         ("Media", {"fields": ("image_url",)}),
         (
             "Highlight/priority",
-            {"fields": ("is_featured", "is_hidden_gem", "status_override", "editor_rating")},
+            {
+                "fields": (
+                    "is_featured",
+                    "is_hidden_gem",
+                    "status_override",
+                    "editor_rating",
+                    "rating_value",
+                    "review_count",
+                    "rating_source",
+                    "rating_max",
+                    "rating_url",
+                    "rating_last_checked_at",
+                )
+            },
         ),
         (
             "Prijs",

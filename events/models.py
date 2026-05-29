@@ -158,6 +158,12 @@ class Event(models.Model):
     is_hidden_gem = models.BooleanField(default=False)
     status_override = models.CharField(max_length=100, blank=True, null=True)
     editor_rating = models.DecimalField(max_digits=3, decimal_places=1, blank=True, null=True)
+    rating_value = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    review_count = models.PositiveIntegerField(blank=True, null=True)
+    rating_source = models.CharField(max_length=80, blank=True, null=True)
+    rating_max = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    rating_url = models.URLField(blank=True, null=True)
+    rating_last_checked_at = models.DateField(blank=True, null=True)
 
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -274,6 +275,12 @@ class Command(BaseCommand):
             weather_suitability=record.weather_suitability if record.weather_suitability in {"all", "sun", "rain"} else None,
             is_featured=self._parse_bool(self._record_raw_value(record, "Featured") or self._record_raw_value(record, "Uitgelicht")),
             is_hidden_gem=self._parse_bool(self._record_raw_value(record, "HiddenGem") or self._record_raw_value(record, "Hidden Gem")),
+            rating_value=record.rating_value,
+            review_count=record.review_count,
+            rating_source=record.rating_source or None,
+            rating_max=record.rating_max or (Decimal("5") if record.rating_value is not None else None),
+            rating_url=record.rating_url or None,
+            rating_last_checked_at=self._parse_date(record.rating_last_checked_at),
         )
 
     def _build_dedupe_key(self, city_slug, record):
@@ -346,3 +353,11 @@ class Command(BaseCommand):
         if parsed.tzinfo:
             return parsed
         return make_aware(parsed)
+
+    def _parse_date(self, value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value).date()
+        except ValueError:
+            return None

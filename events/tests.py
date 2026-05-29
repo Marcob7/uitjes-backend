@@ -812,6 +812,12 @@ class CityContentApiTests(TestCase):
             ticket_url="nan",
             image_url="NaN",
             price_note="",
+            rating_value="4.60",
+            review_count=128,
+            rating_source="Google",
+            rating_max="5.00",
+            rating_url="https://example.com/museumwandeling/reviews",
+            rating_last_checked_at="2026-05-29",
         )
         self.outing.tags.add(self.tag)
         self.food = Event.objects.create(
@@ -970,6 +976,18 @@ class CityContentApiTests(TestCase):
         self.assertIsNone(item["image_url"])
         self.assertIsNone(item["price_note"])
         self.assertNotIn('"nan"', json.dumps(response.json()).lower())
+
+    def test_city_content_response_includes_public_review_fields(self):
+        response = self.client.get("/api/city-content/?city=harderwijk&type=outings")
+        self.assertEqual(response.status_code, 200)
+
+        item = response.json()["results"][0]
+        self.assertEqual(item["rating_value"], "4.60")
+        self.assertEqual(item["review_count"], 128)
+        self.assertEqual(item["rating_source"], "Google")
+        self.assertEqual(item["rating_max"], "5.00")
+        self.assertEqual(item["rating_url"], "https://example.com/museumwandeling/reviews")
+        self.assertEqual(item["rating_last_checked_at"], "2026-05-29")
 
 
 class FavoritesApiTests(TestCase):
@@ -1741,6 +1759,82 @@ class CityContentImportCommandTests(TestCase):
         workbook.save(temp_file.name)
         return temp_file.name
 
+    def _create_city_content_excel_file_with_review_fields(self, row_values):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Master template"
+        sheet.append([
+            "City",
+            "Naam/Activiteit",
+            "Slug",
+            "Kind",
+            "Category",
+            "DatumRaw",
+            "Venue",
+            "Address",
+            "Latitude",
+            "Longitude",
+            "Summary",
+            "Omschrijving",
+            "SourceUrl",
+            "ImageUrl",
+            "PriceNote",
+            "IndoorOutdoor",
+            "WeatherSuitability",
+            "LastCheckedAt",
+            "RatingValue",
+            "ReviewCount",
+            "RatingSource",
+            "RatingMax",
+            "RatingUrl",
+            "RatingLastCheckedAt",
+            "Rating",
+        ])
+        defaults = {
+            "title": "Review stadswandeling",
+            "slug": "review-stadswandeling",
+            "rating_value": "",
+            "review_count": "",
+            "rating_source": "",
+            "rating_max": "",
+            "rating_url": "",
+            "rating_last_checked_at": "",
+            "rating": "",
+        }
+        values = {**defaults, **row_values}
+        sheet.append([
+            "harderwijk",
+            values["title"],
+            values["slug"],
+            "activity",
+            "Cultuur",
+            "1 januari 2026",
+            "Binnenstad",
+            "Markt 1",
+            "52.350000",
+            "5.620000",
+            "Een compacte reviewwandeling.",
+            "Een volledige beschrijving van de reviewwandeling door Harderwijk.",
+            f"https://example.com/{values['slug']}",
+            "",
+            "",
+            "outdoor",
+            "sun",
+            "2026-05-13",
+            values["rating_value"],
+            values["review_count"],
+            values["rating_source"],
+            values["rating_max"],
+            values["rating_url"],
+            values["rating_last_checked_at"],
+            values["rating"],
+        ])
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_file.close()
+        workbook.save(temp_file.name)
+        return temp_file.name
+
     def _create_prepare_city_content_excel_file(self, duplicate_slug=False):
         workbook = Workbook()
         sheet = workbook.active
@@ -1960,6 +2054,129 @@ class CityContentImportCommandTests(TestCase):
 
             imported = Event.objects.get(slug="ticketloze-stadswandeling")
             self.assertIsNone(imported.ticket_url)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_imports_public_review_fields(self):
+        path = self._create_city_content_excel_file_with_review_fields(
+            {
+                "rating_value": "4,6",
+                "review_count": "128",
+                "rating_source": "Google",
+                "rating_max": "5",
+                "rating_url": "https://example.com/reviews",
+                "rating_last_checked_at": "2026-05-29",
+            }
+        )
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                no_report_file=True,
+                stdout=StringIO(),
+            )
+
+            imported = Event.objects.get(slug="review-stadswandeling")
+            self.assertEqual(str(imported.rating_value), "4.60")
+            self.assertEqual(imported.review_count, 128)
+            self.assertEqual(imported.rating_source, "Google")
+            self.assertEqual(str(imported.rating_max), "5.00")
+            self.assertEqual(imported.rating_url, "https://example.com/reviews")
+            self.assertEqual(imported.rating_last_checked_at.isoformat(), "2026-05-29")
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_ignores_empty_nan_and_bad_review_values(self):
+        path = self._create_city_content_excel_file_with_review_fields(
+            {
+                "slug": "lege-reviewvelden",
+                "title": "Lege reviewvelden",
+                "rating_value": "nan",
+                "review_count": "None",
+                "rating_source": "null",
+                "rating_max": "bad",
+                "rating_url": "nan",
+                "rating_last_checked_at": "not-a-date",
+            }
+        )
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                no_report_file=True,
+                stdout=StringIO(),
+            )
+
+            imported = Event.objects.get(slug="lege-reviewvelden")
+            self.assertIsNone(imported.rating_value)
+            self.assertIsNone(imported.review_count)
+            self.assertIsNone(imported.rating_source)
+            self.assertIsNone(imported.rating_max)
+            self.assertIsNone(imported.rating_url)
+            self.assertIsNone(imported.rating_last_checked_at)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_ignores_composite_legacy_rating_text(self):
+        path = self._create_city_content_excel_file_with_review_fields(
+            {
+                "slug": "samengestelde-rating",
+                "title": "Samengestelde rating",
+                "rating": "8,6/10 (21 stemmen, 0 reviews) - locatie",
+            }
+        )
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                no_report_file=True,
+                stdout=StringIO(),
+            )
+
+            imported = Event.objects.get(slug="samengestelde-rating")
+            self.assertIsNone(imported.rating_value)
+            self.assertIsNone(imported.review_count)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_city_content_commit_imports_numeric_legacy_rating_only(self):
+        path = self._create_city_content_excel_file_with_review_fields(
+            {
+                "slug": "numerieke-rating",
+                "title": "Numerieke rating",
+                "rating": "4,7",
+            }
+        )
+
+        try:
+            call_command(
+                "import_city_content",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                commit=True,
+                no_report_file=True,
+                stdout=StringIO(),
+            )
+
+            imported = Event.objects.get(slug="numerieke-rating")
+            self.assertEqual(str(imported.rating_value), "4.70")
         finally:
             if os.path.exists(path):
                 os.unlink(path)

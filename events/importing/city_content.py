@@ -81,6 +81,12 @@ FIELD_ALIASES = {
     "organizer_website": ["OrganizerWebsite"],
     "last_checked_at": ["LastCheckedAt", "LaatstGecontroleerd"],
     "data_quality_note": ["DataQualityNote", "DatakwaliteitNotitie"],
+    "rating_value": ["rating_value", "RatingValue", "rating", "Rating"],
+    "review_count": ["review_count", "ReviewCount", "Reviews", "AantalReviews"],
+    "rating_source": ["rating_source", "RatingSource"],
+    "rating_max": ["rating_max", "RatingMax"],
+    "rating_url": ["rating_url", "RatingUrl"],
+    "rating_last_checked_at": ["rating_last_checked_at", "RatingLastCheckedAt"],
 }
 
 OUTING_KIND_VALUES = {
@@ -245,6 +251,27 @@ def parse_decimal(value):
         return None
 
 
+def parse_rating_decimal(value):
+    raw = normalize_text(value)
+    if not raw:
+        return None
+    if not re.fullmatch(r"\d+(?:[,.]\d+)?", raw):
+        return None
+    return parse_decimal(raw)
+
+
+def parse_review_count(value):
+    raw = normalize_text(value)
+    if not raw:
+        return None
+    if re.fullmatch(r"\d+\.0+", raw):
+        raw = raw.split(".", 1)[0]
+    if not re.fullmatch(r"\d+(?:[.\s]\d{3})*", raw):
+        return None
+    parsed = int(re.sub(r"[.\s]", "", raw))
+    return parsed if parsed >= 0 else None
+
+
 def parse_excel_date(value):
     if value is None or pd.isna(value):
         return ""
@@ -317,6 +344,12 @@ class ImportRecord:
     indoor_outdoor: str = ""
     weather_suitability: str = ""
     source_id: str = ""
+    rating_value: Decimal | None = None
+    review_count: int | None = None
+    rating_source: str = ""
+    rating_max: Decimal | None = None
+    rating_url: str = ""
+    rating_last_checked_at: str = ""
     tag_values: list[str] = field(default_factory=list)
 
 
@@ -415,14 +448,33 @@ class CityContentWorkbook:
             indoor_outdoor=value("indoor_outdoor").casefold(),
             weather_suitability=value("weather_suitability").casefold(),
             source_id=value("source_id"),
+            rating_source=value("rating_source"),
+            rating_url=value("rating_url"),
+            rating_last_checked_at=parse_excel_date(raw.get("RatingLastCheckedAt") or raw.get("rating_last_checked_at")),
         )
         record.latitude = parse_decimal(record.raw_latitude)
         record.longitude = parse_decimal(record.raw_longitude)
+        record.rating_max = self._parse_rating_max(value("rating_max"))
+        record.rating_value = self._parse_rating_value(value("rating_value"), record.rating_max)
+        record.review_count = parse_review_count(value("review_count"))
 
         for field_name in ["audience_tags", "moment_tags", "vibe_tags", "theme_tags", "feature_tags", "accessibility_tags"]:
             record.tag_values.extend(split_tags(value(field_name)))
 
         return record
+
+    def _parse_rating_max(self, raw_value):
+        parsed = parse_rating_decimal(raw_value)
+        if parsed is None or parsed <= 0:
+            return None
+        return parsed
+
+    def _parse_rating_value(self, raw_value, rating_max):
+        parsed = parse_rating_decimal(raw_value)
+        max_value = rating_max or Decimal("5")
+        if parsed is None or parsed < 0 or parsed > max_value:
+            return None
+        return parsed
 
 
 def expected_columns_for(data_type):
@@ -437,4 +489,10 @@ def expected_columns_for(data_type):
         "LastCheckedAt",
         "Latitude",
         "Longitude",
+        "RatingValue",
+        "ReviewCount",
+        "RatingSource",
+        "RatingMax",
+        "RatingUrl",
+        "RatingLastCheckedAt",
     }

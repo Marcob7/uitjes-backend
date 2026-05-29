@@ -147,6 +147,12 @@ class EventSerializer(serializers.ModelSerializer):
             "is_hidden_gem",
             "status",
             "editor_rating",
+            "rating_value",
+            "review_count",
+            "rating_source",
+            "rating_max",
+            "rating_url",
+            "rating_last_checked_at",
             "latitude",
             "longitude",
         ]
@@ -233,7 +239,7 @@ class CityContentSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        for field in ("slug", "title", "kind", "summary"):
+        for field in ("slug", "title", "kind", "summary", "rating_source", "rating_url"):
             data[field] = normalize_api_value(data.get(field))
         return data
 
@@ -258,6 +264,12 @@ class CityContentSerializer(serializers.ModelSerializer):
             "source_url",
             "ticket_url",
             "reservation_url",
+            "rating_value",
+            "review_count",
+            "rating_source",
+            "rating_max",
+            "rating_url",
+            "rating_last_checked_at",
             "tags",
         ]
 
