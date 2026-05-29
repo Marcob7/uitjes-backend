@@ -11,7 +11,7 @@ from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from rest_framework.test import APIClient
 
 from .models import Category, City, Event, Favorite, NewsletterSignup, Tag, Venue
@@ -1741,6 +1741,87 @@ class CityContentImportCommandTests(TestCase):
         workbook.save(temp_file.name)
         return temp_file.name
 
+    def _create_prepare_city_content_excel_file(self, duplicate_slug=False):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Master template"
+        sheet.append([
+            "City",
+            "Naam/Activiteit",
+            "Slug",
+            "Kind",
+            "Category",
+            "DatumRaw",
+            "StartAt",
+            "EndAt",
+            "Venue",
+            "Address",
+            "Latitude",
+            "Longitude",
+            "Summary",
+            "Omschrijving",
+            "Website",
+            "SourceUrl",
+            "TicketUrl",
+            "VenueWebsite",
+            "ImageUrl",
+            "PriceNote",
+            "LastCheckedAt",
+        ])
+        first_slug = "winterprogramma-2026-01-01"
+        second_slug = first_slug if duplicate_slug else "winterprogramma-2026-01-02"
+        sheet.append([
+            "harderwijk",
+            "  Winterprogramma  ",
+            first_slug,
+            "event",
+            "Cultuur",
+            "1 januari 2026",
+            "2026-01-01T10:00:00",
+            "2026-01-01T12:00:00",
+            "Binnenstad",
+            "Markt 1",
+            "52.350000",
+            "5.620000",
+            "Een compact winterprogramma.",
+            "Een volledige beschrijving van het winterprogramma.",
+            " nan ",
+            " https://example.com/winterprogramma ",
+            "None",
+            "null",
+            "",
+            "",
+            "2026-05-13",
+        ])
+        sheet.append([
+            "harderwijk",
+            "Winterprogramma",
+            second_slug,
+            "event",
+            "Cultuur",
+            "2 januari 2026",
+            "2026-01-02T10:00:00",
+            "2026-01-02T12:00:00",
+            "Binnenstad",
+            "Markt 1",
+            "52.350001",
+            "5.620001",
+            "Een compact winterprogramma.",
+            "Een volledige beschrijving van het winterprogramma op dag twee.",
+            "",
+            "https://example.com/winterprogramma",
+            "",
+            "",
+            "",
+            "",
+            "2026-05-13",
+        ])
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_file.close()
+        workbook.save(temp_file.name)
+        return temp_file.name
+
     def test_city_content_dry_run_does_not_write_database(self):
         path = self._create_city_content_excel_file()
         before_counts = {
@@ -1882,3 +1963,86 @@ class CityContentImportCommandTests(TestCase):
         finally:
             if os.path.exists(path):
                 os.unlink(path)
+
+    def test_prepare_city_import_batch_normalizes_urls_and_auto_fixes_date_series_titles(self):
+        path = self._create_prepare_city_content_excel_file()
+        output_path = path.replace(".xlsx", "_prepared.xlsx")
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "prepare_city_import_batch",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                stdout=stdout,
+            )
+
+            self.assertTrue(os.path.exists(output_path))
+            original = load_workbook(path)
+            prepared = load_workbook(output_path)
+            original_sheet = original["Master template"]
+            prepared_sheet = prepared["Master template"]
+
+            self.assertEqual(original_sheet["B2"].value, "  Winterprogramma  ")
+            self.assertEqual(prepared_sheet["B2"].value, "Winterprogramma - 1 januari 2026")
+            self.assertEqual(prepared_sheet["B3"].value, "Winterprogramma - 2 januari 2026")
+            self.assertIn(prepared_sheet["O2"].value, (None, ""))
+            self.assertIn(prepared_sheet["Q2"].value, (None, ""))
+            self.assertIn(prepared_sheet["R2"].value, (None, ""))
+            self.assertIn("Auto fixes: 2 titles, 4 URL fields", stdout.getvalue())
+            self.assertIn("Ready for dry-run: yes", stdout.getvalue())
+        finally:
+            for cleanup_path in [path, output_path]:
+                if os.path.exists(cleanup_path):
+                    os.unlink(cleanup_path)
+
+    def test_prepare_city_import_batch_duplicate_slug_is_blocking(self):
+        path = self._create_prepare_city_content_excel_file(duplicate_slug=True)
+        output_path = path.replace(".xlsx", "_prepared.xlsx")
+        stdout = StringIO()
+
+        try:
+            call_command(
+                "prepare_city_import_batch",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                stdout=stdout,
+            )
+
+            self.assertTrue(os.path.exists(output_path))
+            self.assertIn("Blocking issues:", stdout.getvalue())
+            self.assertIn("duplicate_slug", stdout.getvalue())
+            self.assertIn("Ready for dry-run: no", stdout.getvalue())
+        finally:
+            for cleanup_path in [path, output_path]:
+                if os.path.exists(cleanup_path):
+                    os.unlink(cleanup_path)
+
+    def test_prepare_city_import_batch_does_not_write_database(self):
+        path = self._create_prepare_city_content_excel_file()
+        output_path = path.replace(".xlsx", "_prepared.xlsx")
+        before_counts = {
+            "events": Event.objects.count(),
+            "venues": Venue.objects.count(),
+            "tags": Tag.objects.count(),
+        }
+
+        try:
+            call_command(
+                "prepare_city_import_batch",
+                file=path,
+                city="harderwijk",
+                type="outings",
+                dry_run_after_clean=True,
+                stdout=StringIO(),
+            )
+
+            self.assertEqual(Event.objects.count(), before_counts["events"])
+            self.assertEqual(Venue.objects.count(), before_counts["venues"])
+            self.assertEqual(Tag.objects.count(), before_counts["tags"])
+        finally:
+            for cleanup_path in [path, output_path]:
+                if os.path.exists(cleanup_path):
+                    os.unlink(cleanup_path)
