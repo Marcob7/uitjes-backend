@@ -89,8 +89,16 @@ class VenueAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
+    actions = (
+        "mark_published",
+        "mark_hidden",
+        "mark_archived",
+        "mark_needs_review",
+        "mark_expired",
+    )
     list_display = (
         "title",
+        "status",
         "city",
         "kind",
         "category",
@@ -104,10 +112,12 @@ class EventAdmin(admin.ModelAdmin):
         "is_hidden_gem",
     )
     list_filter = (
+        "status",
         "city",
         "kind",
         "category",
         ("start_at", admin.DateFieldListFilter),
+        ("end_at", admin.DateFieldListFilter),
         HasImageUrlFilter,
         HasCoordinatesFilter,
         "is_featured",
@@ -143,6 +153,8 @@ class EventAdmin(admin.ModelAdmin):
                     "title",
                     "slug",
                     "kind",
+                    "status",
+                    "status_note",
                     "city",
                     "venue",
                     "category",
@@ -208,6 +220,33 @@ class EventAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="coords")
     def has_coordinates(self, obj):
         return obj.latitude is not None and obj.longitude is not None
+
+    def _mark_status(self, request, queryset, lifecycle_status):
+        updated = queryset.update(status=lifecycle_status)
+        self.message_user(
+            request,
+            f"{updated} event(s) gemarkeerd als {lifecycle_status}.",
+        )
+
+    @admin.action(description="Markeer als published")
+    def mark_published(self, request, queryset):
+        self._mark_status(request, queryset, Event.Status.PUBLISHED)
+
+    @admin.action(description="Markeer als hidden")
+    def mark_hidden(self, request, queryset):
+        self._mark_status(request, queryset, Event.Status.HIDDEN)
+
+    @admin.action(description="Markeer als archived")
+    def mark_archived(self, request, queryset):
+        self._mark_status(request, queryset, Event.Status.ARCHIVED)
+
+    @admin.action(description="Markeer als needs_review")
+    def mark_needs_review(self, request, queryset):
+        self._mark_status(request, queryset, Event.Status.NEEDS_REVIEW)
+
+    @admin.action(description="Markeer als expired")
+    def mark_expired(self, request, queryset):
+        self._mark_status(request, queryset, Event.Status.EXPIRED)
 
 
 @admin.register(Favorite)

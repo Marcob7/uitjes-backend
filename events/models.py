@@ -66,6 +66,14 @@ class Tag(models.Model):
 
 
 class Event(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+        HIDDEN = "hidden", "Hidden"
+        ARCHIVED = "archived", "Archived"
+        EXPIRED = "expired", "Expired"
+        NEEDS_REVIEW = "needs_review", "Needs review"
+
     class Kind(models.TextChoices):
         EVENT = "event", "Event"
         ACTIVITY = "activity", "Activity"
@@ -166,6 +174,13 @@ class Event(models.Model):
     rating_last_checked_at = models.DateField(blank=True, null=True)
 
     updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PUBLISHED,
+        db_index=True,
+    )
+    status_note = models.TextField(blank=True, null=True)
 
     class Meta:
         constraints = [

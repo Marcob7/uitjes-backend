@@ -139,6 +139,24 @@ def get_base_event_queryset():
     )
 
 
+PUBLIC_EXPIRABLE_KINDS = {
+    Event.Kind.EVENT,
+    Event.Kind.FESTIVAL,
+}
+
+
+def get_public_not_expired_filter():
+    now = timezone.now()
+    clearly_expired = Q(kind__in=PUBLIC_EXPIRABLE_KINDS) & (
+        Q(end_at__lt=now) | (Q(end_at__isnull=True) & Q(start_at__lt=now))
+    )
+    return ~clearly_expired
+
+
+def apply_public_event_lifecycle_filter(qs):
+    return qs.filter(status=Event.Status.PUBLISHED).filter(get_public_not_expired_filter())
+
+
 def apply_when_filter(qs, when):
     if not when:
         return qs
@@ -394,6 +412,7 @@ def tags_list(request):
 @permission_classes([AllowAny])
 def events_list(request):
     qs = get_base_event_queryset()
+    qs = apply_public_event_lifecycle_filter(qs)
     qs = apply_event_filters(qs, request.query_params)
     return Response(paginate_queryset(qs, request.query_params))
 
@@ -444,6 +463,7 @@ def apply_city_content_filters(qs, params):
 @permission_classes([AllowAny])
 def city_content_list(request):
     qs = get_base_event_queryset()
+    qs = apply_public_event_lifecycle_filter(qs)
     qs = apply_city_content_filters(qs, request.query_params)
     return Response(paginate_city_content_queryset(qs, request.query_params))
 
@@ -483,6 +503,7 @@ def festivals_list(request):
     params = request.query_params.copy()
     params["kind"] = Event.Kind.FESTIVAL
     qs = get_base_event_queryset()
+    qs = apply_public_event_lifecycle_filter(qs)
     qs = apply_event_filters(qs, params)
     return Response(paginate_queryset(qs, params))
 
@@ -569,6 +590,8 @@ def event_detail(request, event_id):
         event = (
             Event.objects.select_related("city", "venue", "category")
             .prefetch_related("tags")
+            .filter(status=Event.Status.PUBLISHED)
+            .filter(get_public_not_expired_filter())
             .get(id=event_id)
         )
     except Event.DoesNotExist:
@@ -583,6 +606,8 @@ def event_detail_by_slug(request, slug):
     event = (
         Event.objects.select_related("city", "venue", "category")
         .prefetch_related("tags")
+        .filter(status=Event.Status.PUBLISHED)
+        .filter(get_public_not_expired_filter())
         .filter(slug=slug)
         .order_by("id")
         .first()

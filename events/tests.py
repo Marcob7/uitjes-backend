@@ -124,6 +124,28 @@ class EventsApiTests(TestCase):
         self.assertEqual(slug_response.status_code, 200)
         self.assertEqual(slug_response.json()["slug"], self.event.slug)
 
+    def test_public_event_detail_hides_non_published_and_expired_records(self):
+        hidden = Event.objects.create(
+            title="Verborgen event",
+            slug="verborgen-event",
+            city=self.city,
+            kind=Event.Kind.EVENT,
+            status=Event.Status.HIDDEN,
+        )
+        expired = Event.objects.create(
+            title="Afgelopen event",
+            slug="afgelopen-event",
+            city=self.city,
+            kind=Event.Kind.EVENT,
+            start_at=timezone.now() - timedelta(days=1),
+        )
+
+        hidden_response = self.client.get(f"/api/events/{hidden.id}/")
+        expired_response = self.client.get(f"/api/events/by-slug/{expired.slug}/")
+
+        self.assertEqual(hidden_response.status_code, 404)
+        self.assertEqual(expired_response.status_code, 404)
+
     def test_metadata_endpoints(self):
         self.assertEqual(self.client.get("/api/cities/").status_code, 200)
         self.assertEqual(self.client.get("/api/cities/apeldoorn/").status_code, 200)
@@ -988,6 +1010,107 @@ class CityContentApiTests(TestCase):
         self.assertEqual(item["rating_max"], "5.00")
         self.assertEqual(item["rating_url"], "https://example.com/museumwandeling/reviews")
         self.assertEqual(item["rating_last_checked_at"], "2026-05-29")
+
+    def test_city_content_only_returns_published_records(self):
+        hidden = Event.objects.create(
+            title="Verborgen wandeling",
+            slug="verborgen-wandeling",
+            kind=Event.Kind.ACTIVITY,
+            city=self.city,
+            category=self.activity_category,
+            status=Event.Status.HIDDEN,
+        )
+        archived = Event.objects.create(
+            title="Gearchiveerde wandeling",
+            slug="gearchiveerde-wandeling",
+            kind=Event.Kind.ACTIVITY,
+            city=self.city,
+            category=self.activity_category,
+            status=Event.Status.ARCHIVED,
+        )
+
+        response = self.client.get("/api/city-content/?city=harderwijk&type=outings&limit=20")
+        self.assertEqual(response.status_code, 200)
+
+        returned_ids = {item["id"] for item in response.json()["results"]}
+        self.assertNotIn(hidden.id, returned_ids)
+        self.assertNotIn(archived.id, returned_ids)
+
+    def test_city_content_filters_expired_events_without_hiding_places(self):
+        expired_event = Event.objects.create(
+            title="Afgelopen voorstelling",
+            slug="afgelopen-voorstelling",
+            kind=Event.Kind.EVENT,
+            city=self.city,
+            category=self.activity_category,
+            start_at=timezone.now() - timedelta(days=2),
+        )
+        old_place = Event.objects.create(
+            title="Historisch plein",
+            slug="historisch-plein",
+            kind=Event.Kind.PLACE,
+            city=self.city,
+            category=self.activity_category,
+            start_at=timezone.now() - timedelta(days=365),
+        )
+
+        response = self.client.get("/api/city-content/?city=harderwijk&type=outings&limit=20")
+        self.assertEqual(response.status_code, 200)
+
+        returned_ids = {item["id"] for item in response.json()["results"]}
+        self.assertNotIn(expired_event.id, returned_ids)
+        self.assertIn(old_place.id, returned_ids)
+
+
+class EventLifecycleCommandTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Harderwijk", slug="harderwijk")
+        self.other_city = City.objects.create(name="Lelystad", slug="lelystad")
+
+    def test_check_event_lifecycle_reports_without_modifying_records(self):
+        expired = Event.objects.create(
+            title="Afgelopen festival",
+            slug="dubbele-slug",
+            kind=Event.Kind.FESTIVAL,
+            city=self.city,
+            start_at=timezone.now() - timedelta(days=3),
+        )
+        Event.objects.create(
+            title="Tweede met dubbele slug",
+            slug="dubbele-slug",
+            kind=Event.Kind.ACTIVITY,
+            city=self.city,
+            status=Event.Status.HIDDEN,
+        )
+        Event.objects.create(
+            title="Datum ontbreekt",
+            slug="datum-ontbreekt",
+            kind=Event.Kind.ACTIVITY,
+            city=self.other_city,
+            status=Event.Status.NEEDS_REVIEW,
+        )
+        Event.objects.create(
+            title="Gearchiveerd item",
+            slug="gearchiveerd-item",
+            kind=Event.Kind.ACTIVITY,
+            city=self.other_city,
+            status=Event.Status.ARCHIVED,
+            date_text="Doorlopend",
+        )
+
+        before = list(Event.objects.order_by("id").values_list("id", "status"))
+        out = StringIO()
+        call_command("check_event_lifecycle", stdout=out)
+        after = list(Event.objects.order_by("id").values_list("id", "status"))
+
+        output = out.getvalue()
+        self.assertEqual(after, before)
+        self.assertIn("Verlopen event-kandidaten: 1", output)
+        self.assertIn(f"#{expired.id}", output)
+        self.assertIn("Records zonder duidelijke datum mogelijk needs_review: 2", output)
+        self.assertIn("harderwijk: hidden=1", output)
+        self.assertIn("lelystad: archived=1", output)
+        self.assertIn("dubbele-slug (2 records)", output)
 
 
 class FavoritesApiTests(TestCase):
