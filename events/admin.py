@@ -98,18 +98,28 @@ class EventAdmin(admin.ModelAdmin):
     )
     list_display = (
         "title",
-        "status",
         "city",
         "kind",
         "category",
+        "status",
         "start_at",
         "end_at",
-        "has_source_url",
+        "source_url",
+        "ticket_url",
+        "updated_at",
         "has_image_url",
         "has_coordinates",
         "is_free",
         "is_featured",
         "is_hidden_gem",
+    )
+    list_editable = (
+        "city",
+        "kind",
+        "category",
+        "status",
+        "start_at",
+        "end_at",
     )
     list_filter = (
         "status",
@@ -147,16 +157,12 @@ class EventAdmin(admin.ModelAdmin):
     readonly_fields = ("updated_at", "source", "dedupe_key", "raw_date_text")
     fieldsets = (
         (
-            "Basis",
+            "Basisinformatie",
             {
                 "fields": (
                     "title",
                     "slug",
                     "kind",
-                    "status",
-                    "status_note",
-                    "city",
-                    "venue",
                     "category",
                     "tags",
                     "summary",
@@ -168,6 +174,8 @@ class EventAdmin(admin.ModelAdmin):
             "Locatie",
             {
                 "fields": (
+                    "city",
+                    "venue",
                     "address",
                     "latitude",
                     "longitude",
@@ -177,15 +185,13 @@ class EventAdmin(admin.ModelAdmin):
             },
         ),
         ("Datum/tijd", {"fields": ("start_at", "end_at", "date_text", "opening_hours_text")}),
-        ("Bron/links", {"fields": ("source_url", "ticket_url")}),
-        ("Media", {"fields": ("image_url",)}),
+        ("Links/tickets", {"fields": ("source_url", "ticket_url", "image_url")}),
         (
-            "Highlight/priority",
+            "Reviewvelden",
             {
                 "fields": (
                     "is_featured",
                     "is_hidden_gem",
-                    "status_override",
                     "editor_rating",
                     "rating_value",
                     "review_count",
@@ -196,6 +202,7 @@ class EventAdmin(admin.ModelAdmin):
                 )
             },
         ),
+        ("Lifecycle/status", {"fields": ("status", "status_note", "status_override")}),
         (
             "Prijs",
             {"fields": ("is_free", "price_min", "price_max", "price_note")},

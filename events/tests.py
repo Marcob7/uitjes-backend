@@ -1175,6 +1175,65 @@ class FavoritesApiTests(TestCase):
         self.assertEqual(payload["category"], self.category.name)
         self.assertEqual(payload["summary"], self.event.summary)
         self.assertEqual(payload["image_url"], self.event.image_url)
+        self.assertTrue(payload["is_publicly_available"])
+        self.assertIsNone(payload["availability_reason"])
+
+    def test_existing_hidden_favorite_is_marked_unavailable(self):
+        self.event.status = Event.Status.HIDDEN
+        self.event.save(update_fields=["status"])
+        Favorite.objects.create(user=self.user, event=self.event)
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get("/api/favorites/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()[0]
+        self.assertEqual(payload["event_id"], self.event.id)
+        self.assertFalse(payload["is_publicly_available"])
+        self.assertEqual(payload["availability_reason"], Event.Status.HIDDEN)
+
+    def test_existing_expired_favorite_is_marked_unavailable(self):
+        self.event.start_at = timezone.now() - timedelta(days=3)
+        self.event.end_at = timezone.now() - timedelta(days=2)
+        self.event.save(update_fields=["start_at", "end_at"])
+        Favorite.objects.create(user=self.user, event=self.event)
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get("/api/favorites/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()[0]
+        self.assertFalse(payload["is_publicly_available"])
+        self.assertEqual(payload["availability_reason"], "expired")
+
+    def test_user_cannot_add_non_public_favorite(self):
+        self.event.status = Event.Status.ARCHIVED
+        self.event.save(update_fields=["status"])
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Favorite.objects.filter(user=self.user, event=self.event).exists())
+
+    def test_user_cannot_add_expired_favorite(self):
+        self.event.start_at = timezone.now() - timedelta(days=3)
+        self.event.end_at = timezone.now() - timedelta(days=2)
+        self.event.save(update_fields=["start_at", "end_at"])
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post(
+            "/api/favorites/",
+            {"event_id": self.event.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Favorite.objects.filter(user=self.user, event=self.event).exists())
 
     def test_duplicate_favorite_does_not_create_duplicate_record(self):
         self.client.force_authenticate(self.user)

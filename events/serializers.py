@@ -368,11 +368,40 @@ class FavoriteSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField()
     summary = serializers.CharField(source="event.summary", read_only=True)
     image_url = serializers.URLField(source="event.image_url", read_only=True)
+    is_publicly_available = serializers.SerializerMethodField()
+    availability_reason = serializers.SerializerMethodField()
 
     def get_category(self, obj):
         if obj.event.category_id:
             return obj.event.category.name
         return None
+
+    def _is_expired_public_event(self, event):
+        if event.kind not in {Event.Kind.EVENT, Event.Kind.FESTIVAL}:
+            return False
+
+        now = timezone.now()
+        if event.end_at is not None:
+            return event.end_at < now
+        if event.start_at is not None:
+            return event.start_at < now
+        return False
+
+    def get_is_publicly_available(self, obj):
+        event = obj.event
+        return (
+            event.status == Event.Status.PUBLISHED
+            and not self._is_expired_public_event(event)
+        )
+
+    def get_availability_reason(self, obj):
+        if self.get_is_publicly_available(obj):
+            return None
+
+        if self._is_expired_public_event(obj.event):
+            return "expired"
+
+        return obj.event.status
 
     class Meta:
         model = Favorite
@@ -386,5 +415,7 @@ class FavoriteSerializer(serializers.ModelSerializer):
             "category",
             "summary",
             "image_url",
+            "is_publicly_available",
+            "availability_reason",
             "created_at",
         ]
