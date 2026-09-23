@@ -433,6 +433,7 @@ def apply_city_content_filters(qs, params):
     city = (params.get("city") or "").strip()
     content_type = (params.get("type") or params.get("kind") or "").strip()
     query = (params.get("query") or params.get("q") or params.get("search") or "").strip()
+    search_terms = [term.strip() for term in (params.get("terms") or "").split(",") if term.strip()]
 
     if city:
         qs = qs.filter(Q(city__slug__iexact=city) | Q(city__name__iexact=city))
@@ -445,16 +446,26 @@ def apply_city_content_filters(qs, params):
         else:
             qs = qs.filter(kind=content_type)
 
-    if query:
-        qs = qs.filter(
-            Q(title__icontains=query)
-            | Q(summary__icontains=query)
-            | Q(description__icontains=query)
-            | Q(venue__name__icontains=query)
-            | Q(address__icontains=query)
-            | Q(category__name__icontains=query)
-            | Q(category__slug__icontains=query)
-        )
+    if query or search_terms:
+        # Candidate retrieval only. The frontend owns the central relevance
+        # score, while this keeps semantic aliases (for example wandelen /
+        # stadswandeling) available to that scorer.
+        candidate_terms = list(dict.fromkeys([query, *search_terms]))
+        term_filter = Q()
+        for term in candidate_terms:
+            term_filter |= (
+                Q(title__icontains=term)
+                | Q(slug__icontains=term)
+                | Q(summary__icontains=term)
+                | Q(description__icontains=term)
+                | Q(venue__name__icontains=term)
+                | Q(address__icontains=term)
+                | Q(category__name__icontains=term)
+                | Q(category__slug__icontains=term)
+                | Q(tags__name__icontains=term)
+                | Q(tags__slug__icontains=term)
+            )
+        qs = qs.filter(term_filter)
 
     return qs.distinct()
 

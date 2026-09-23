@@ -989,6 +989,22 @@ class CityContentApiTests(TestCase):
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["results"][0]["slug"], self.outing.slug)
 
+    def test_query_filter_accepts_search_candidate_terms(self):
+        response = self.client.get(
+            "/api/city-content/?query=wandelen&terms=wandelen,wandeling,wandelroute"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        returned_slugs = {item["slug"] for item in response.json()["results"]}
+        self.assertIn(self.lelystad_outing.slug, returned_slugs)
+
+    def test_unknown_query_returns_a_successful_empty_page(self):
+        response = self.client.get("/api/city-content/?query=zzzxq")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 0)
+        self.assertEqual(response.json()["results"], [])
+
     def test_nan_like_values_are_serialized_as_null(self):
         response = self.client.get("/api/city-content/?city=harderwijk&type=outings")
         self.assertEqual(response.status_code, 200)
