@@ -989,6 +989,14 @@ class CityContentApiTests(TestCase):
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["results"][0]["slug"], self.outing.slug)
 
+    def test_query_filter_matches_the_city_name(self):
+        response = self.client.get("/api/city-content/?query=harderwijk")
+
+        self.assertEqual(response.status_code, 200)
+        returned_slugs = {item["slug"] for item in response.json()["results"]}
+        self.assertIn(self.outing.slug, returned_slugs)
+        self.assertIn(self.food.slug, returned_slugs)
+
     def test_query_filter_accepts_search_candidate_terms(self):
         response = self.client.get(
             "/api/city-content/?query=wandelen&terms=wandelen,wandeling,wandelroute"
